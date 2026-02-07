@@ -152,12 +152,34 @@
       </div>
     </div>
 
+    <!-- Price Chart -->
+    <div class="card mt-6">
+      <h2 class="text-xl font-semibold mb-4">💶 Precios de Hoy (24h)</h2>
+      <div id="price-chart" class="h-48 flex items-end gap-1"></div>
+      <div class="flex justify-between text-xs text-gray-400 mt-2">
+        <span>0:00</span>
+        <span>6:00</span>
+        <span>12:00</span>
+        <span>18:00</span>
+        <span>23:00</span>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card mt-6">
+      <h2 class="text-xl font-semibold mb-4">📈 Histórico (7 días)</h2>
+      <div id="history-container">
+        <p class="text-gray-500 text-center">Cargando...</p>
+      </div>
+    </div>
+
     <!-- Footer -->
     <div class="text-center mt-8 text-sm text-gray-400">
       <p>VoltAssistant v1.0 | Actualización cada 30 segundos</p>
       <p class="mt-1">
         <a href="/health" class="text-blue-500 hover:underline">API Health</a> |
-        <a href="/dashboard" class="text-blue-500 hover:underline">JSON Data</a>
+        <a href="/dashboard" class="text-blue-500 hover:underline">JSON</a> |
+        <a href="/history" class="text-blue-500 hover:underline">History</a>
       </p>
     </div>
   </div>
@@ -255,11 +277,103 @@
       }
     }
     
+    // Render price chart
+    async function renderPriceChart() {
+      try {
+        const response = await fetch('/prices');
+        const data = await response.json();
+        
+        if (!data.success) return;
+        
+        const chartContainer = document.getElementById('price-chart');
+        const maxPrice = Math.max(...data.prices.map(p => p.price));
+        const minPrice = Math.min(...data.prices.map(p => p.price));
+        const currentHour = new Date().getHours();
+        
+        chartContainer.innerHTML = data.prices.map((p, i) => {
+          const height = ((p.price - minPrice) / (maxPrice - minPrice) * 80) + 20;
+          const isCheap = data.cheapestHours.includes(p.hour);
+          const isExpensive = data.expensiveHours.includes(p.hour);
+          const isCurrent = p.hour === currentHour;
+          
+          let color = 'bg-blue-400';
+          if (isCheap) color = 'bg-green-400';
+          if (isExpensive) color = 'bg-red-400';
+          if (isCurrent) color = 'bg-yellow-500 ring-2 ring-yellow-300';
+          
+          return `
+            <div class="flex-1 flex flex-col items-center group relative">
+              <div class="absolute -top-8 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
+                ${p.hour}:00 - ${(p.price * 100).toFixed(2)}¢
+              </div>
+              <div class="${color} rounded-t w-full transition-all hover:opacity-80" 
+                   style="height: ${height}%"></div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Error rendering price chart:', error);
+      }
+    }
+
+    // Load and render history
+    async function loadHistory() {
+      try {
+        const response = await fetch('/history?days=7');
+        const data = await response.json();
+        
+        if (!data.success) return;
+        
+        const container = document.getElementById('history-container');
+        
+        container.innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-gray-500 border-b">
+                  <th class="pb-2">Fecha</th>
+                  <th class="pb-2">Precio Medio</th>
+                  <th class="pb-2">Min/Max</th>
+                  <th class="pb-2">Solar</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.days.map(day => `
+                  <tr class="border-b border-gray-100">
+                    <td class="py-2">${formatDate(day.date)}</td>
+                    <td class="py-2">${(day.prices.average * 100).toFixed(2)}¢</td>
+                    <td class="py-2 text-xs">
+                      <span class="text-green-600">${(day.prices.min * 100).toFixed(1)}¢</span>
+                      /
+                      <span class="text-red-600">${(day.prices.max * 100).toFixed(1)}¢</span>
+                    </td>
+                    <td class="py-2">
+                      ${day.solar.totalKwh > 0 ? `${day.solar.totalKwh} kWh ☀️` : '-'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error loading history:', error);
+      }
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+    }
+
     // Initial load
     updateDashboard();
+    renderPriceChart();
+    loadHistory();
     
     // Auto-refresh every 30 seconds
     setInterval(updateDashboard, 30000);
+    setInterval(renderPriceChart, 60000);
   </script>
 </body>
 </html>
