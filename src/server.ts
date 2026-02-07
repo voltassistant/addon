@@ -18,6 +18,12 @@ import {
   getActiveAlerts, getAlertHistory, 
   acknowledgeAlert, clearAlert, checkAlerts 
 } from './alerts'
+import {
+  getLoadManagerConfig, setLoadManagerConfig,
+  getLoadManagerState, updateState as updateLoadState,
+  balanceLoads, addLoad, removeLoad, updateLoad,
+  forceRestoreAll, setEnabled as setLoadManagerEnabled,
+} from './load-manager'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -630,6 +636,158 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       sendJSON(res, 500, { success: false, error: (error as Error).message })
     }
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOAD MANAGER ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get load manager status
+  'GET /loads/status': async (req, res) => {
+    try {
+      const state = await updateLoadState()
+      sendJSON(res, 200, {
+        success: true,
+        ...state,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get load manager config
+  'GET /loads/config': async (req, res) => {
+    try {
+      const config = getLoadManagerConfig()
+      sendJSON(res, 200, { success: true, config })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Update load manager config
+  'POST /loads/config': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const config = setLoadManagerConfig(body as any)
+      sendJSON(res, 200, { success: true, config })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Add a load
+  'POST /loads': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      if (!body.id || !body.name || !body.entity_id || !body.priority) {
+        sendJSON(res, 400, { success: false, error: 'Missing required fields: id, name, entity_id, priority' })
+        return
+      }
+      const load = addLoad(body as any)
+      sendJSON(res, 200, { success: true, load })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Update a load
+  'PUT /loads': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { success: false, error: 'Missing load id' })
+        return
+      }
+      const load = updateLoad(body.id as string, body as any)
+      if (!load) {
+        sendJSON(res, 404, { success: false, error: 'Load not found' })
+        return
+      }
+      sendJSON(res, 200, { success: true, load })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Delete a load
+  'DELETE /loads': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { success: false, error: 'Missing load id' })
+        return
+      }
+      const removed = removeLoad(body.id as string)
+      sendJSON(res, 200, { success: true, removed })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Run balance check (manual trigger)
+  'POST /loads/balance': async (req, res) => {
+    try {
+      const result = await balanceLoads()
+      const state = getLoadManagerState()
+      sendJSON(res, 200, {
+        success: true,
+        ...result,
+        state: {
+          totalPower: state.totalPower,
+          maxAvailable: state.maxAvailable,
+          usagePercent: state.usagePercent,
+          isOverloaded: state.isOverloaded,
+          shedLoads: state.shedLoads,
+        },
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Force restore all shed loads
+  'POST /loads/restore': async (req, res) => {
+    try {
+      const restored = await forceRestoreAll()
+      sendJSON(res, 200, { success: true, restored })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Enable/disable load manager
+  'POST /loads/enable': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const enabled = body.enabled === true || body.enabled === 'true'
+      setLoadManagerEnabled(enabled)
+      sendJSON(res, 200, { success: true, enabled })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Webhook for HA automation to trigger balance
+  'POST /webhook/loads': async (req, res) => {
+    try {
+      const result = await balanceLoads()
+      const state = getLoadManagerState()
+      
+      // Return HA-friendly format
+      sendJSON(res, 200, {
+        balanced: true,
+        actions_taken: result.actions.length,
+        actions: result.actions,
+        total_power: state.totalPower,
+        max_available: state.maxAvailable,
+        is_overloaded: state.isOverloaded,
+        shed_loads: state.shedLoads,
+        last_action: state.lastAction,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { error: (error as Error).message })
+    }
+  },
 }
 
 // Serve static files
@@ -713,6 +871,18 @@ export function startServer() {
     console.log('   POST /webhook/ha   - Home Assistant webhook')
     console.log('   POST /webhook/notify - Notification webhook')
     console.log('   GET  /summary      - Plain text summary')
+    console.log('')
+    console.log('🔌 Load Manager:')
+    console.log('   GET  /loads/status  - Current load state')
+    console.log('   GET  /loads/config  - Get config')
+    console.log('   POST /loads/config  - Update config')
+    console.log('   POST /loads         - Add a load')
+    console.log('   PUT  /loads         - Update a load')
+    console.log('   DELETE /loads       - Remove a load')
+    console.log('   POST /loads/balance - Run balance check')
+    console.log('   POST /loads/restore - Force restore all')
+    console.log('   POST /loads/enable  - Enable/disable')
+    console.log('   POST /webhook/loads - HA webhook trigger')
   })
   
   return server
@@ -722,210 +892,3 @@ export function startServer() {
 if (require.main === module) {
   startServer()
 }
-
-// Weekly cost prediction endpoint
-app.get('/prediction/weekly', async (req, res) => {
-  try {
-    const history = await getHistoryWeek();
-    const avgDailyConsumption = history.reduce((sum, d) => sum + (d.gridImportKwh || 0), 0) / 7;
-    const avgDailyProduction = history.reduce((sum, d) => sum + (d.solarKwh || 0), 0) / 7;
-    const avgPrice = history.reduce((sum, d) => sum + (d.avgPrice || 0.15), 0) / 7;
-    
-    // Get solar forecast for next 7 days
-    const solarForecast = await getSolarForecast();
-    const weeklyForecast = [];
-    
-    for (let i = 0; i < 7; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-      
-      // Estimate based on patterns
-      const estimatedSolar = solarForecast?.daily?.[i] || avgDailyProduction;
-      const estimatedGrid = Math.max(0, avgDailyConsumption - estimatedSolar * 0.7);
-      const estimatedCost = estimatedGrid * avgPrice;
-      
-      weeklyForecast.push({
-        date: dateStr,
-        estimatedSolarKwh: Math.round(estimatedSolar * 10) / 10,
-        estimatedGridKwh: Math.round(estimatedGrid * 10) / 10,
-        estimatedCost: Math.round(estimatedCost * 100) / 100
-      });
-    }
-    
-    const totalCost = weeklyForecast.reduce((sum, d) => sum + d.estimatedCost, 0);
-    const totalGrid = weeklyForecast.reduce((sum, d) => sum + d.estimatedGridKwh, 0);
-    const totalSolar = weeklyForecast.reduce((sum, d) => sum + d.estimatedSolarKwh, 0);
-    
-    res.json({
-      success: true,
-      prediction: {
-        days: weeklyForecast,
-        totals: {
-          estimatedCost: Math.round(totalCost * 100) / 100,
-          estimatedGridKwh: Math.round(totalGrid * 10) / 10,
-          estimatedSolarKwh: Math.round(totalSolar * 10) / 10,
-          selfConsumptionRatio: Math.round((totalSolar / (totalSolar + totalGrid)) * 100)
-        },
-        basedOn: {
-          avgDailyConsumption: Math.round(avgDailyConsumption * 10) / 10,
-          avgDailyProduction: Math.round(avgDailyProduction * 10) / 10,
-          avgPricePerKwh: Math.round(avgPrice * 1000) / 1000
-        }
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Monthly savings report
-app.get('/report/monthly', async (req, res) => {
-  try {
-    const history = await getHistoryWeek(); // Would need 30 days for real
-    const totalSolar = history.reduce((sum, d) => sum + (d.solarKwh || 0), 0) * 4; // Extrapolate
-    const avgPrice = 0.15; // Average PVPC
-    const savedMoney = totalSolar * avgPrice;
-    const co2Saved = totalSolar * 0.233; // kg CO2 per kWh
-    
-    res.json({
-      success: true,
-      report: {
-        month: new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' }),
-        solarProducedKwh: Math.round(totalSolar),
-        moneySaved: Math.round(savedMoney * 100) / 100,
-        co2SavedKg: Math.round(co2Saved * 10) / 10,
-        treesEquivalent: Math.round(co2Saved / 21) // ~21kg CO2 per tree per year
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Automation rules configuration
-interface AutomationRule {
-  id: string;
-  name: string;
-  enabled: boolean;
-  condition: {
-    type: 'price_below' | 'price_above' | 'battery_below' | 'battery_above' | 'solar_above';
-    threshold: number;
-  };
-  action: {
-    type: 'charge_battery' | 'discharge_battery' | 'notify';
-    params?: any;
-  };
-}
-
-let automationRules: AutomationRule[] = [
-  {
-    id: 'cheap-charge',
-    name: 'Cargar en horas baratas',
-    enabled: true,
-    condition: { type: 'price_below', threshold: 0.08 },
-    action: { type: 'charge_battery' }
-  },
-  {
-    id: 'low-battery-alert',
-    name: 'Alerta batería baja',
-    enabled: true,
-    condition: { type: 'battery_below', threshold: 15 },
-    action: { type: 'notify', params: { message: 'Batería por debajo del 15%' } }
-  },
-  {
-    id: 'expensive-discharge',
-    name: 'Usar batería en horas caras',
-    enabled: true,
-    condition: { type: 'price_above', threshold: 0.20 },
-    action: { type: 'discharge_battery' }
-  }
-];
-
-app.get('/automation/rules', (req, res) => {
-  res.json({ success: true, rules: automationRules });
-});
-
-app.post('/automation/rules', async (req, res) => {
-  try {
-    const rule: AutomationRule = req.body;
-    if (!rule.id || !rule.name || !rule.condition || !rule.action) {
-      return res.status(400).json({ error: 'Invalid rule format' });
-    }
-    
-    const existingIndex = automationRules.findIndex(r => r.id === rule.id);
-    if (existingIndex >= 0) {
-      automationRules[existingIndex] = rule;
-    } else {
-      automationRules.push(rule);
-    }
-    
-    res.json({ success: true, rules: automationRules });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/automation/rules/:id', (req, res) => {
-  const { id } = req.params;
-  automationRules = automationRules.filter(r => r.id !== id);
-  res.json({ success: true, rules: automationRules });
-});
-
-app.post('/automation/toggle/:id', (req, res) => {
-  const { id } = req.params;
-  const rule = automationRules.find(r => r.id === id);
-  if (!rule) {
-    return res.status(404).json({ error: 'Rule not found' });
-  }
-  rule.enabled = !rule.enabled;
-  res.json({ success: true, rule });
-});
-
-// Evaluate automation rules
-app.post('/automation/evaluate', async (req, res) => {
-  try {
-    const status = await getInverterStatus();
-    const prices = await getPVPCPrices();
-    const currentPrice = prices?.current || 0.15;
-    
-    const triggered: { rule: AutomationRule; shouldTrigger: boolean }[] = [];
-    
-    for (const rule of automationRules) {
-      if (!rule.enabled) continue;
-      
-      let shouldTrigger = false;
-      switch (rule.condition.type) {
-        case 'price_below':
-          shouldTrigger = currentPrice < rule.condition.threshold;
-          break;
-        case 'price_above':
-          shouldTrigger = currentPrice > rule.condition.threshold;
-          break;
-        case 'battery_below':
-          shouldTrigger = status.battery.soc < rule.condition.threshold;
-          break;
-        case 'battery_above':
-          shouldTrigger = status.battery.soc > rule.condition.threshold;
-          break;
-        case 'solar_above':
-          shouldTrigger = status.solar.totalPower > rule.condition.threshold;
-          break;
-      }
-      
-      triggered.push({ rule, shouldTrigger });
-    }
-    
-    res.json({
-      success: true,
-      currentState: {
-        price: currentPrice,
-        batterySoc: status.battery.soc,
-        solarPower: status.solar.totalPower
-      },
-      evaluations: triggered
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
