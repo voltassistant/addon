@@ -8,6 +8,7 @@ import http from 'http'
 import { getPVPCPrices, formatPrice } from './pvpc'
 import { getSolarForecast } from './solar'
 import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
+import { getInverterStatus } from './realtime'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -264,6 +265,62 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     }
   },
 
+  // Get real-time inverter status from Home Assistant
+  'GET /status': async (req, res) => {
+    try {
+      const status = await getInverterStatus()
+      sendJSON(res, 200, { success: true, ...status })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get combined status + plan
+  'GET /dashboard': async (req, res) => {
+    try {
+      const [status, pvpc, solar] = await Promise.all([
+        getInverterStatus(),
+        getPVPCPrices(new Date()),
+        getSolarForecast(new Date()),
+      ])
+      
+      const plan = generateChargingPlan(pvpc, solar, {
+        capacityWh: status.battery.capacity * 1000,
+        maxChargeRateW: 3000,
+        minSoC: 0.1,
+        maxSoC: 1.0,
+        currentSoC: status.battery.soc / 100,
+      })
+      
+      const currentHour = new Date().getHours()
+      const currentAction = plan.hourlyPlan[currentHour]?.decision.action || 'idle'
+      
+      sendJSON(res, 200, {
+        success: true,
+        timestamp: new Date().toISOString(),
+        realtime: status,
+        plan: {
+          currentAction,
+          recommendations: plan.recommendations,
+          gridChargeHours: plan.gridChargeHours,
+          estimatedSavings: plan.savings,
+        },
+        prices: {
+          current: pvpc.prices[currentHour]?.price || 0,
+          average: pvpc.averagePrice,
+          cheapestHours: pvpc.cheapestHours,
+          expensiveHours: pvpc.expensiveHours,
+        },
+        solar: {
+          forecast: solar.totalWh,
+          peak: { hour: solar.peakHour, watts: solar.peakWatts },
+        },
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
   // Get text summary (for chat integrations)
   'GET /summary': async (req, res) => {
     try {
@@ -324,6 +381,8 @@ export function startServer() {
     console.log('')
     console.log('📡 Available endpoints:')
     console.log('   GET  /health       - Health check')
+    console.log('   GET  /status       - Real-time inverter status from HA')
+    console.log('   GET  /dashboard    - Combined status + plan + prices')
     console.log('   GET  /plan         - Get today\'s charging plan')
     console.log('   POST /plan         - Get plan with custom params')
     console.log('   GET  /prices       - Get PVPC prices')
