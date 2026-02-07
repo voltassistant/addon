@@ -5,6 +5,8 @@
  */
 
 import http from 'http'
+import fs from 'fs'
+import path from 'path'
 import { getPVPCPrices, formatPrice } from './pvpc'
 import { getSolarForecast } from './solar'
 import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
@@ -338,6 +340,22 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
   },
 }
 
+// Serve static files
+function serveStatic(res: http.ServerResponse, filePath: string, contentType: string) {
+  try {
+    const fullPath = path.join(__dirname, '..', 'public', filePath)
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath)
+      res.writeHead(200, { 'Content-Type': contentType, ...corsHeaders })
+      res.end(content)
+      return true
+    }
+  } catch (e) {
+    // Fall through
+  }
+  return false
+}
+
 // Request handler
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
   // Handle CORS preflight
@@ -347,14 +365,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return
   }
   
-  // Check auth
+  // Serve static files
+  const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    if (serveStatic(res, 'index.html', 'text/html')) return
+  }
+  if (url.pathname.endsWith('.css')) {
+    if (serveStatic(res, url.pathname, 'text/css')) return
+  }
+  if (url.pathname.endsWith('.js')) {
+    if (serveStatic(res, url.pathname, 'application/javascript')) return
+  }
+  
+  // Check auth for API routes
   if (!checkAuth(req)) {
     sendJSON(res, 401, { error: 'Unauthorized' })
     return
   }
   
   // Match route
-  const url = new URL(req.url || '/', `http://localhost:${PORT}`)
   const routeKey = `${req.method} ${url.pathname}`
   const handler = routes[routeKey]
   
