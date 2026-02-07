@@ -11,6 +11,7 @@ import { getPVPCPrices, formatPrice } from './pvpc'
 import { getSolarForecast } from './solar'
 import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
 import { getInverterStatus } from './realtime'
+import { applyChargingAction, checkConnection } from './ha-integration'
 import { getDayHistory, getWeekHistory, findBestChargingWindows } from './history'
 import dotenv from 'dotenv'
 
@@ -24,6 +25,7 @@ interface RequestBody {
   battery?: number
   consumptionPattern?: number[]
   detailed?: boolean
+  action?: string
 }
 
 // Default battery config
@@ -229,6 +231,51 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       })
     } catch (error) {
       sendJSON(res, 500, { error: (error as Error).message })
+    }
+  },
+
+  // Control inverter charging mode
+  'POST /control': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const { action } = body
+      
+      if (!action || !['charge', 'discharge', 'auto', 'idle'].includes(action)) {
+        sendJSON(res, 400, { 
+          error: 'Invalid action. Use: charge, discharge, auto, or idle' 
+        })
+        return
+      }
+      
+      // Check HA connection first
+      const connected = await checkConnection()
+      if (!connected) {
+        sendJSON(res, 503, { 
+          error: 'Home Assistant not connected',
+          hint: 'Check HA_URL and HA_TOKEN in environment'
+        })
+        return
+      }
+      
+      // Map action to charging action
+      const actionMap: Record<string, 'charge_from_grid' | 'discharge' | 'idle'> = {
+        'charge': 'charge_from_grid',
+        'discharge': 'discharge',
+        'auto': 'idle',
+        'idle': 'idle',
+      }
+      
+      const result = await applyChargingAction(actionMap[action])
+      
+      sendJSON(res, 200, {
+        success: result,
+        action,
+        message: result 
+          ? `Successfully set mode to: ${action}` 
+          : 'Failed to apply action',
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
     }
   },
 
