@@ -73,9 +73,47 @@ function sendJSON(res: http.ServerResponse, status: number, data: any) {
   res.end(JSON.stringify(data, null, 2))
 }
 
+// Request counters for metrics
+let requestCounts = {
+  status: 0,
+  dashboard: 0,
+  plan: 0,
+  prices: 0,
+  solar: 0,
+  history: 0,
+  control: 0,
+}
+
 // Routes
 const routes: Record<string, (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>> = {
   
+  // Prometheus metrics
+  'GET /metrics': async (req, res) => {
+    const lines = [
+      '# HELP voltassistant_up Service status (1 = up)',
+      '# TYPE voltassistant_up gauge',
+      'voltassistant_up 1',
+      '',
+      '# HELP voltassistant_requests_total Request counts by endpoint',
+      '# TYPE voltassistant_requests_total counter',
+      ...Object.entries(requestCounts).map(([k, v]) => 
+        `voltassistant_requests_total{endpoint="${k}"} ${v}`
+      ),
+      '',
+      '# HELP nodejs_process_uptime_seconds Process uptime',
+      '# TYPE nodejs_process_uptime_seconds gauge',
+      `nodejs_process_uptime_seconds ${Math.floor(process.uptime())}`,
+      '',
+      '# HELP nodejs_heap_bytes Node.js heap usage',
+      '# TYPE nodejs_heap_bytes gauge',
+      `nodejs_heap_bytes{type="used"} ${process.memoryUsage().heapUsed}`,
+      `nodejs_heap_bytes{type="total"} ${process.memoryUsage().heapTotal}`,
+    ]
+    
+    res.writeHead(200, { 'Content-Type': 'text/plain', ...corsHeaders })
+    res.end(lines.join('\n'))
+  },
+
   // Health check
   'GET /health': async (req, res) => {
     sendJSON(res, 200, { status: 'ok', version: '1.0.0', timestamp: new Date().toISOString() })
