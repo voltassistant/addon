@@ -374,6 +374,73 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       res.end(`Error: ${(error as Error).message}`)
     }
   },
+
+  // Daily report for notifications
+  'GET /report/daily': async (req, res) => {
+    try {
+      const [status, pvpc, solar] = await Promise.all([
+        getInverterStatus(),
+        getPVPCPrices(new Date()),
+        getSolarForecast(new Date()),
+      ])
+      
+      const plan = generateChargingPlan(pvpc, solar, {
+        capacityWh: status.battery.capacity * 1000 || 10000,
+        maxChargeRateW: 3000,
+        minSoC: 0.1,
+        maxSoC: 1.0,
+        currentSoC: (status.battery.soc || 50) / 100,
+      })
+      
+      const now = new Date()
+      const hour = now.getHours()
+      const greeting = hour < 12 ? 'Buenos días' : hour < 20 ? 'Buenas tardes' : 'Buenas noches'
+      
+      const lines = [
+        `☀️ ${greeting}! Resumen energético:`,
+        '',
+        `🔋 Batería: ${status.battery.soc}% (${status.battery.state})`,
+        `☀️ Solar hoy: ${status.solar.todayKwh} kWh producidos`,
+        `   Previsión: ${Math.round(solar.totalWh / 1000)} kWh`,
+        '',
+        `💶 Precio actual: ${(pvpc.prices[hour]?.price * 100 || 0).toFixed(2)}¢/kWh`,
+        `   Media hoy: ${(pvpc.averagePrice * 100).toFixed(2)}¢/kWh`,
+        '',
+        `⏰ Horas baratas: ${pvpc.cheapestHours.map(h => `${h}:00`).join(', ')}`,
+        `⚠️ Horas caras: ${pvpc.expensiveHours.map(h => `${h}:00`).join(', ')}`,
+        '',
+        `💰 Ahorro estimado hoy: €${plan.savings.toFixed(2)}`,
+      ]
+      
+      // Add alerts if any
+      if (status.battery.soc < 20) {
+        lines.push('', '⚠️ ALERTA: Batería baja, considera cargar desde red')
+      }
+      if (status.health.issues.length > 0) {
+        lines.push('', '⚠️ Alertas: ' + status.health.issues.join(', '))
+      }
+      
+      sendJSON(res, 200, {
+        success: true,
+        report: lines.join('\n'),
+        data: {
+          battery: status.battery,
+          solar: {
+            today: status.solar.todayKwh,
+            forecast: Math.round(solar.totalWh / 1000),
+          },
+          price: {
+            current: pvpc.prices[hour]?.price || 0,
+            average: pvpc.averagePrice,
+          },
+          savings: plan.savings,
+          alerts: status.health.issues,
+        }
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
 }
 
 // Serve static files
