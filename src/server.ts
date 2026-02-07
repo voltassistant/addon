@@ -722,3 +722,210 @@ export function startServer() {
 if (require.main === module) {
   startServer()
 }
+
+// Weekly cost prediction endpoint
+app.get('/prediction/weekly', async (req, res) => {
+  try {
+    const history = await getHistoryWeek();
+    const avgDailyConsumption = history.reduce((sum, d) => sum + (d.gridImportKwh || 0), 0) / 7;
+    const avgDailyProduction = history.reduce((sum, d) => sum + (d.solarKwh || 0), 0) / 7;
+    const avgPrice = history.reduce((sum, d) => sum + (d.avgPrice || 0.15), 0) / 7;
+    
+    // Get solar forecast for next 7 days
+    const solarForecast = await getSolarForecast();
+    const weeklyForecast = [];
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      // Estimate based on patterns
+      const estimatedSolar = solarForecast?.daily?.[i] || avgDailyProduction;
+      const estimatedGrid = Math.max(0, avgDailyConsumption - estimatedSolar * 0.7);
+      const estimatedCost = estimatedGrid * avgPrice;
+      
+      weeklyForecast.push({
+        date: dateStr,
+        estimatedSolarKwh: Math.round(estimatedSolar * 10) / 10,
+        estimatedGridKwh: Math.round(estimatedGrid * 10) / 10,
+        estimatedCost: Math.round(estimatedCost * 100) / 100
+      });
+    }
+    
+    const totalCost = weeklyForecast.reduce((sum, d) => sum + d.estimatedCost, 0);
+    const totalGrid = weeklyForecast.reduce((sum, d) => sum + d.estimatedGridKwh, 0);
+    const totalSolar = weeklyForecast.reduce((sum, d) => sum + d.estimatedSolarKwh, 0);
+    
+    res.json({
+      success: true,
+      prediction: {
+        days: weeklyForecast,
+        totals: {
+          estimatedCost: Math.round(totalCost * 100) / 100,
+          estimatedGridKwh: Math.round(totalGrid * 10) / 10,
+          estimatedSolarKwh: Math.round(totalSolar * 10) / 10,
+          selfConsumptionRatio: Math.round((totalSolar / (totalSolar + totalGrid)) * 100)
+        },
+        basedOn: {
+          avgDailyConsumption: Math.round(avgDailyConsumption * 10) / 10,
+          avgDailyProduction: Math.round(avgDailyProduction * 10) / 10,
+          avgPricePerKwh: Math.round(avgPrice * 1000) / 1000
+        }
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Monthly savings report
+app.get('/report/monthly', async (req, res) => {
+  try {
+    const history = await getHistoryWeek(); // Would need 30 days for real
+    const totalSolar = history.reduce((sum, d) => sum + (d.solarKwh || 0), 0) * 4; // Extrapolate
+    const avgPrice = 0.15; // Average PVPC
+    const savedMoney = totalSolar * avgPrice;
+    const co2Saved = totalSolar * 0.233; // kg CO2 per kWh
+    
+    res.json({
+      success: true,
+      report: {
+        month: new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' }),
+        solarProducedKwh: Math.round(totalSolar),
+        moneySaved: Math.round(savedMoney * 100) / 100,
+        co2SavedKg: Math.round(co2Saved * 10) / 10,
+        treesEquivalent: Math.round(co2Saved / 21) // ~21kg CO2 per tree per year
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Automation rules configuration
+interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  condition: {
+    type: 'price_below' | 'price_above' | 'battery_below' | 'battery_above' | 'solar_above';
+    threshold: number;
+  };
+  action: {
+    type: 'charge_battery' | 'discharge_battery' | 'notify';
+    params?: any;
+  };
+}
+
+let automationRules: AutomationRule[] = [
+  {
+    id: 'cheap-charge',
+    name: 'Cargar en horas baratas',
+    enabled: true,
+    condition: { type: 'price_below', threshold: 0.08 },
+    action: { type: 'charge_battery' }
+  },
+  {
+    id: 'low-battery-alert',
+    name: 'Alerta batería baja',
+    enabled: true,
+    condition: { type: 'battery_below', threshold: 15 },
+    action: { type: 'notify', params: { message: 'Batería por debajo del 15%' } }
+  },
+  {
+    id: 'expensive-discharge',
+    name: 'Usar batería en horas caras',
+    enabled: true,
+    condition: { type: 'price_above', threshold: 0.20 },
+    action: { type: 'discharge_battery' }
+  }
+];
+
+app.get('/automation/rules', (req, res) => {
+  res.json({ success: true, rules: automationRules });
+});
+
+app.post('/automation/rules', async (req, res) => {
+  try {
+    const rule: AutomationRule = req.body;
+    if (!rule.id || !rule.name || !rule.condition || !rule.action) {
+      return res.status(400).json({ error: 'Invalid rule format' });
+    }
+    
+    const existingIndex = automationRules.findIndex(r => r.id === rule.id);
+    if (existingIndex >= 0) {
+      automationRules[existingIndex] = rule;
+    } else {
+      automationRules.push(rule);
+    }
+    
+    res.json({ success: true, rules: automationRules });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/automation/rules/:id', (req, res) => {
+  const { id } = req.params;
+  automationRules = automationRules.filter(r => r.id !== id);
+  res.json({ success: true, rules: automationRules });
+});
+
+app.post('/automation/toggle/:id', (req, res) => {
+  const { id } = req.params;
+  const rule = automationRules.find(r => r.id === id);
+  if (!rule) {
+    return res.status(404).json({ error: 'Rule not found' });
+  }
+  rule.enabled = !rule.enabled;
+  res.json({ success: true, rule });
+});
+
+// Evaluate automation rules
+app.post('/automation/evaluate', async (req, res) => {
+  try {
+    const status = await getInverterStatus();
+    const prices = await getPVPCPrices();
+    const currentPrice = prices?.current || 0.15;
+    
+    const triggered: { rule: AutomationRule; shouldTrigger: boolean }[] = [];
+    
+    for (const rule of automationRules) {
+      if (!rule.enabled) continue;
+      
+      let shouldTrigger = false;
+      switch (rule.condition.type) {
+        case 'price_below':
+          shouldTrigger = currentPrice < rule.condition.threshold;
+          break;
+        case 'price_above':
+          shouldTrigger = currentPrice > rule.condition.threshold;
+          break;
+        case 'battery_below':
+          shouldTrigger = status.battery.soc < rule.condition.threshold;
+          break;
+        case 'battery_above':
+          shouldTrigger = status.battery.soc > rule.condition.threshold;
+          break;
+        case 'solar_above':
+          shouldTrigger = status.solar.totalPower > rule.condition.threshold;
+          break;
+      }
+      
+      triggered.push({ rule, shouldTrigger });
+    }
+    
+    res.json({
+      success: true,
+      currentState: {
+        price: currentPrice,
+        batterySoc: status.battery.soc,
+        solarPower: status.solar.totalPower
+      },
+      evaluations: triggered
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
