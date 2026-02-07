@@ -10,6 +10,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "serve": "ts-node src/server.ts",
+    "ha": "ts-node src/ha-integration.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": ["energy", "solar", "battery", "pvpc", "spain", "home-assistant"],
