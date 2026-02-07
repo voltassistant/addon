@@ -13,6 +13,11 @@ import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
 import { getInverterStatus } from './realtime'
 import { applyChargingAction, checkConnection } from './ha-integration'
 import { getDayHistory, getWeekHistory, findBestChargingWindows } from './history'
+import { 
+  getConfig, setConfig, resetConfig, 
+  getActiveAlerts, getAlertHistory, 
+  acknowledgeAlert, clearAlert, checkAlerts 
+} from './alerts'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -26,6 +31,9 @@ interface RequestBody {
   consumptionPattern?: number[]
   detailed?: boolean
   action?: string
+  id?: string
+  // Alert config fields (passed through to setConfig)
+  [key: string]: unknown
 }
 
 // Default battery config
@@ -458,6 +466,102 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       res.writeHead(500, { 'Content-Type': 'text/plain', ...corsHeaders })
       res.end(`Error: ${(error as Error).message}`)
     }
+  },
+
+  // Get alert configuration
+  'GET /alerts/config': async (req, res) => {
+    sendJSON(res, 200, { success: true, config: getConfig() })
+  },
+
+  // Update alert configuration
+  'POST /alerts/config': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const config = setConfig(body as any)
+      sendJSON(res, 200, { success: true, config })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Reset alert configuration to defaults
+  'POST /alerts/reset': async (req, res) => {
+    sendJSON(res, 200, { success: true, config: resetConfig() })
+  },
+
+  // Get active alerts
+  'GET /alerts': async (req, res) => {
+    const alerts = getActiveAlerts()
+    sendJSON(res, 200, { 
+      success: true, 
+      count: alerts.length,
+      alerts 
+    })
+  },
+
+  // Check for new alerts based on current state
+  'POST /alerts/check': async (req, res) => {
+    try {
+      const status = await getInverterStatus()
+      const pvpc = await getPVPCPrices(new Date())
+      const hour = new Date().getHours()
+      
+      const newAlerts = checkAlerts({
+        batterySoc: status.battery.soc,
+        inverterTemp: status.temperature.inverter,
+        currentPrice: pvpc.prices[hour]?.price || 0,
+        dailySolarKwh: status.solar.todayKwh,
+      })
+      
+      sendJSON(res, 200, {
+        success: true,
+        newAlerts: newAlerts.length,
+        alerts: newAlerts,
+        activeAlerts: getActiveAlerts(),
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Acknowledge an alert
+  'POST /alerts/ack': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { error: 'Alert ID required' })
+        return
+      }
+      const result = acknowledgeAlert(body.id as string)
+      sendJSON(res, 200, { success: result })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Clear an alert
+  'POST /alerts/clear': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { error: 'Alert ID required' })
+        return
+      }
+      const result = clearAlert(body.id as string)
+      sendJSON(res, 200, { success: result })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get alert history
+  'GET /alerts/history': async (req, res) => {
+    const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+    sendJSON(res, 200, { 
+      success: true, 
+      history: getAlertHistory(limit)
+    })
   },
 
   // Daily report for notifications
