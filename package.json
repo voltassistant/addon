@@ -1,0 +1,27 @@
+{
+  "name": "voltassistant",
+  "version": "1.0.0",
+  "description": "Smart battery charging optimizer combining PVPC prices with solar forecast",
+  "main": "dist/index.js",
+  "bin": {
+    "voltassistant": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["energy", "solar", "battery", "pvpc", "spain", "home-assistant"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  }
+}
