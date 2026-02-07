@@ -1,128 +1,149 @@
 # ⚡ VoltAssistant
 
-Smart battery charging optimizer for home energy systems. Combines **PVPC electricity prices** with **solar forecast** to determine the optimal charging strategy.
+**Smart battery charging optimizer** combining PVPC electricity prices with solar forecast and real-time inverter data from Home Assistant.
+
+[![Node.js](https://img.shields.io/badge/Node.js-22-green)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Features
 
-- 📊 **PVPC Price Analysis** - Fetches real electricity prices from ESIOS/REE
-- ☀️ **Solar Forecast** - Integrates with forecast.solar for production predictions  
-- 🔋 **Smart Planning** - Generates hourly charge/discharge schedules
-- 💰 **Savings Calculator** - Estimates daily savings vs average prices
-- 🏠 **Home Assistant Integration** - Control your inverter automatically
-- 🌐 **REST API** - Webhooks for cron jobs and automation
+### 📊 Smart Planning
+- Analyze PVPC prices from ESIOS/REE
+- Integrate solar forecast from forecast.solar
+- Generate hourly charge/discharge schedules
+- Estimate daily savings vs average prices
+
+### 🔋 Real-time Monitoring
+- Connect to Home Assistant for live inverter data
+- Track battery SOC, solar production, grid power
+- Health alerts for low battery or high temperature
+- Support for Deye/Solarman inverters
+
+### 🌐 Web Dashboard
+- Visual dashboard with auto-refresh
+- 24-hour price chart with color coding
+- 7-day history with trends
+- Current recommendations
+
+### 📱 Notifications
+- Daily morning report via WhatsApp
+- Battery alerts when SOC is low
+- Webhook endpoints for automations
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install
 npm install
 
-# Run CLI
+# CLI mode
 npm run dev
 
-# Run with options
-npm run dev -- --date=2024-01-15 --battery=15 --detailed
+# API server
+npm run serve
 ```
 
-## CLI Options
+## CLI Usage
 
-```
---date=YYYY-MM-DD  Analyze a specific date (default: today)
---battery=10       Battery capacity in kWh (default: 10)
---detailed         Show detailed hourly breakdown
---json             Output plan as JSON
---help, -h         Show help message
+```bash
+# Today's plan
+npx ts-node src/index.ts
+
+# Specific date and battery
+npx ts-node src/index.ts --date=2024-01-15 --battery=15
+
+# Detailed hourly breakdown
+npx ts-node src/index.ts --detailed
+
+# JSON output
+npx ts-node src/index.ts --json
 ```
 
 ## API Server
 
-Start the HTTP server for integration with Home Assistant, cron jobs, or other systems:
+Start with `npm run serve` (default port 3001).
 
-```bash
-# Start server
-npm run serve
-
-# Server runs on http://localhost:3001
-```
-
-### API Endpoints
+### Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/` | GET | Visual dashboard |
 | `/health` | GET | Health check |
-| `/plan` | GET | Get today's charging plan |
-| `/plan` | POST | Get plan with custom parameters |
-| `/prices` | GET | Get PVPC prices |
-| `/solar` | GET | Get solar forecast |
-| `/webhook/ha` | POST | Home Assistant webhook |
+| `/status` | GET | Real-time inverter status from HA |
+| `/dashboard` | GET | Combined status + plan + prices |
+| `/plan` | GET/POST | Today's charging plan |
+| `/prices` | GET | PVPC prices (24h) |
+| `/solar` | GET | Solar forecast |
+| `/history` | GET | Price/solar history (7 days) |
+| `/history/week` | GET | Weekly summary with best windows |
+| `/report/daily` | GET | Formatted daily report for notifications |
+| `/webhook/ha` | POST | Home Assistant automation webhook |
 | `/webhook/notify` | POST | Notification webhook |
 | `/summary` | GET | Plain text summary |
 
-### Example: Get Today's Plan
+### Example: Get Dashboard
 
 ```bash
-curl http://localhost:3001/plan
+curl http://localhost:3001/dashboard
 ```
 
 Response:
 ```json
 {
   "success": true,
+  "realtime": {
+    "battery": { "soc": 20, "state": "charging", "power": 1500 },
+    "solar": { "totalPower": 2100, "todayKwh": 6.5 },
+    "grid": { "power": -50 }
+  },
   "plan": {
-    "date": "2024-01-15",
-    "recommendations": [
-      "🔌 Charge from grid during hours 2, 3, 4 (cheapest prices)",
-      "☀️ Good solar day expected (8kWh) - prioritize self-consumption",
-      "💰 Estimated savings today: €1.50"
-    ],
-    "gridChargeHours": [2, 3, 4],
-    "gridChargeCost": 0.45,
-    "solarChargeWh": 6500,
-    "savings": 1.50
+    "currentAction": "charge_from_solar",
+    "recommendations": ["☀️ Good solar day expected..."],
+    "estimatedSavings": 0.35
+  },
+  "prices": {
+    "current": 0.127,
+    "cheapestHours": [0, 1, 2, 3, 4, 5]
   }
 }
 ```
 
-### Home Assistant Webhook
-
-For automations, call the `/webhook/ha` endpoint to get the current recommended action:
-
-```bash
-curl -X POST http://localhost:3001/webhook/ha
-```
-
-Response includes:
-- `current_action` - What to do now (charge_from_grid, discharge, etc.)
-- `should_charge_from_grid` - Boolean for simple automations
-- `is_cheap_hour` / `is_expensive_hour` - Price indicators
-- `expected_solar_watts` - Current hour solar forecast
-
 ## Home Assistant Integration
 
-Control your Deye inverter (or similar) via Home Assistant:
-
 ```bash
+# Set environment variables
+HA_URL=http://192.168.1.100:8123
+HA_TOKEN=your_long_lived_token
+
 # Check connection
 npm run ha -- status
 
-# Enable grid charging
-npm run ha -- charge
-
-# Enable discharge/selling mode  
-npm run ha -- discharge
-
-# Set to auto/self-use mode
-npm run ha -- auto
+# Control inverter
+npm run ha -- charge    # Enable grid charging
+npm run ha -- discharge # Enable discharge mode
+npm run ha -- auto      # Set to self-use mode
 ```
 
-### Environment Variables
+### Supported Entities
 
-```env
+Works with Solarman/Deye inverters:
+- `sensor.predbat_battery_soc_2`
+- `sensor.inverter_battery_state`
+- `sensor.inverter_pv1_voltage`, `pv1_current`, etc.
+- `sensor.inverter_grid_power`
+- `sensor.inverter_load_l1_power`
+
+## Configuration
+
+Create `.env`:
+
+```bash
 # ESIOS API (optional, for real PVPC prices)
 ESIOS_TOKEN=your_esios_token
 
 # Home Assistant
-HA_URL=http://192.168.1.100:8123
+HA_URL=http://192.168.31.54:8123
 HA_TOKEN=your_long_lived_access_token
 
 # API Server
@@ -132,53 +153,84 @@ API_KEY=optional_api_key
 
 ## Cron Integration
 
-Add to your crontab or OpenClaw cron to get daily plans:
+### OpenClaw
 
-```bash
-# Get daily summary at 6am
-0 6 * * * curl -s http://localhost:3001/webhook/notify | jq -r '.message'
-```
-
-For OpenClaw, create a cron job with:
 ```json
 {
-  "schedule": { "kind": "cron", "expr": "0 6 * * *", "tz": "Europe/Madrid" },
-  "payload": { "kind": "systemEvent", "text": "Check VoltAssistant daily plan" }
+  "schedule": { "kind": "cron", "expr": "0 8 * * *", "tz": "Europe/Madrid" },
+  "payload": { 
+    "kind": "systemEvent", 
+    "text": "Get VoltAssistant daily report and send via WhatsApp" 
+  }
 }
+```
+
+### Standard crontab
+
+```bash
+# Morning report at 8am
+0 8 * * * curl -s http://localhost:3001/report/daily | jq -r '.report'
+
+# Battery check every 2 hours
+0 */2 * * * curl -s http://localhost:3001/status | jq -r '.battery.soc'
+```
+
+## Deployment
+
+### Proxmox LXC
+
+```bash
+# Create Debian 12 LXC (512MB RAM, 4GB disk)
+# Install Node.js 22
+# Clone and build
+
+[Unit]
+Description=VoltAssistant API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/voltassistant
+ExecStart=/usr/bin/node dist/server.js
+Environment=NODE_ENV=production
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐
-│   PVPC API      │     │  Solar Forecast │
-│   (ESIOS/REE)   │     │  (forecast.solar)│
-└────────┬────────┘     └────────┬────────┘
-         │                       │
-         └───────────┬───────────┘
-                     │
-              ┌──────▼──────┐
-              │  Optimizer  │
-              │   Engine    │
-              └──────┬──────┘
-                     │
-    ┌────────────────┼────────────────┐
-    │                │                │
-┌───▼───┐     ┌──────▼──────┐   ┌─────▼─────┐
-│  CLI  │     │  HTTP API   │   │ HA Control│
-│       │     │             │   │           │
-└───────┘     └─────────────┘   └───────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   PVPC API      │     │  Solar Forecast │     │  Home Assistant │
+│   (ESIOS/REE)   │     │  (forecast.solar)│     │   (Inverter)    │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │                       │                       │
+         └───────────────┬───────┴───────────────────────┘
+                         │
+                  ┌──────▼──────┐
+                  │  VoltAssist │
+                  │   Engine    │
+                  └──────┬──────┘
+                         │
+    ┌────────────────────┼────────────────────┐
+    │                    │                    │
+┌───▼───┐         ┌──────▼──────┐      ┌──────▼──────┐
+│  CLI  │         │  HTTP API   │      │  Dashboard  │
+│       │         │ + Webhooks  │      │   (HTML)    │
+└───────┘         └─────────────┘      └─────────────┘
 ```
 
 ## Battery Config
 
-Default configuration (Deye SUN-6K-EU):
-- Capacity: 10kWh
-- Max charge rate: 3kW
-- Min SoC: 10%
-- Max SoC: 100%
+Default (Deye SUN-6K-EU):
+- Capacity: 10 kWh
+- Max charge rate: 3 kW
+- Min SOC: 10%
+- Max SOC: 100%
 
-Adjust via CLI flags or API parameters.
+Override via CLI flags or API parameters.
 
 ## License
 
