@@ -11,6 +11,7 @@ import { getPVPCPrices, formatPrice } from './pvpc'
 import { getSolarForecast } from './solar'
 import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
 import { getInverterStatus } from './realtime'
+import { getDayHistory, getWeekHistory, findBestChargingWindows } from './history'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -323,6 +324,41 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     }
   },
 
+  // Get price/solar history for past N days
+  'GET /history': async (req, res) => {
+    try {
+      const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+      const daysParam = url.searchParams.get('days')
+      const days = daysParam ? parseInt(daysParam, 10) : 7
+      
+      const history = await getDayHistory(Math.min(days, 14))
+      
+      sendJSON(res, 200, {
+        success: true,
+        days: history,
+        count: history.length,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get weekly summary with analysis
+  'GET /history/week': async (req, res) => {
+    try {
+      const week = await getWeekHistory()
+      const bestWindows = findBestChargingWindows(week.days)
+      
+      sendJSON(res, 200, {
+        success: true,
+        ...week,
+        bestChargingWindows: bestWindows,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
   // Get text summary (for chat integrations)
   'GET /summary': async (req, res) => {
     try {
@@ -416,6 +452,8 @@ export function startServer() {
     console.log('   POST /plan         - Get plan with custom params')
     console.log('   GET  /prices       - Get PVPC prices')
     console.log('   GET  /solar        - Get solar forecast')
+    console.log('   GET  /history      - Price/solar history (last 7 days)')
+    console.log('   GET  /history/week - Weekly summary with best windows')
     console.log('   POST /webhook/ha   - Home Assistant webhook')
     console.log('   POST /webhook/notify - Notification webhook')
     console.log('   GET  /summary      - Plain text summary')
