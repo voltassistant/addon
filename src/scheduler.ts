@@ -6,8 +6,8 @@
 
 import { getPVPCPrices, PVPCDay } from './pvpc'
 import { getSolarForecast, SolarDay } from './solar'
-import { getBatteryStatus, applyChargingAction, checkConnection, testConnection } from './ha-integration'
-import { makeFullDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision } from './decision-engine'
+import { getBatteryStatus, applyControlDecision, checkConnection, testConnection, ControlDecision, getCurrentSettings } from './ha-integration'
+import { makeFullDecision, makeSimpleDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision, SimpleControlDecision } from './decision-engine'
 import { saveDecision, updateDecisionExecution, getLastDecision, saveHourlyStat, Decision } from './storage'
 import { loadConfig, SchedulerConfig, getLoadsConfig } from './config'
 import { executeLoadActions, LoadEvaluationResult, getLoadManagerState } from './load-manager'
@@ -18,6 +18,7 @@ export interface SchedulerState {
   lastRun: string | null
   lastAction: BatteryAction | null
   lastReason: string | null
+  lastControl: SimpleControlDecision | null
   nextRun: string | null
   runCount: number
   errorCount: number
@@ -42,6 +43,7 @@ let state: SchedulerState = {
   lastRun: null,
   lastAction: null,
   lastReason: null,
+  lastControl: null,
   nextRun: null,
   runCount: 0,
   errorCount: 0,
@@ -131,7 +133,16 @@ async function tick(): Promise<void> {
     const currentPrice = cachedPrices.prices.find(p => p.hour === currentHour)?.price || cachedPrices.averagePrice
     const currentSolarForecast = cachedSolar.forecasts.find(f => f.hour === currentHour)?.watts || 0
     
-    // Make full decision (battery + loads)
+    // Make simplified control decision
+    const controlDecision = makeSimpleDecision(
+      batteryStatus.soc,
+      currentPrice,
+      batteryStatus.solarPower,
+      cachedPrices,
+      thresholds,
+    )
+    
+    // Also make full decision for load management and detailed logging
     const { batteryDecision, loadActions } = await makeFullDecision({
       currentSoc: batteryStatus.soc,
       currentPrice,
@@ -143,42 +154,58 @@ async function tick(): Promise<void> {
       thresholds,
     })
     
-    console.log(`\n${explainDecision(batteryDecision)}`)
+    // Log the simplified decision clearly
+    console.log(`\n${'─'.repeat(50)}`)
+    console.log(`🎯 CONTROL DECISION:`)
+    console.log(`   Grid Charging: ${controlDecision.charging === 'Grid' ? '✅ ON' : '❌ OFF'}`)
+    console.log(`   Target SOC: ${controlDecision.targetSoc}%`)
+    console.log(`   Reason: ${controlDecision.reason}`)
+    console.log(`${'─'.repeat(50)}`)
     
-    // Check if action changed from last run
-    const lastDecision = getLastDecision()
-    const actionChanged = !lastDecision || lastDecision.action !== batteryDecision.action
+    // Check current settings from HA
+    const currentSettings = await getCurrentSettings()
+    const settingsChanged = !currentSettings || 
+      currentSettings.charging !== controlDecision.charging ||
+      currentSettings.targetSoc !== controlDecision.targetSoc
     
-    // Save decision to database
+    // Save decision to database (using legacy action mapping for compatibility)
+    const legacyAction = controlDecision.charging === 'Grid' ? 'charge_from_grid' : 'idle'
     const decisionRecord: Decision = {
       timestamp: nowStr,
       soc: batteryStatus.soc,
       price: currentPrice,
       solar_watts: batteryStatus.solarPower,
-      action: batteryDecision.action,
-      reason: batteryDecision.reason,
+      action: legacyAction as BatteryAction,
+      reason: controlDecision.reason,
       executed: false,
     }
     const decisionId = saveDecision(decisionRecord)
     
-    // Execute battery action (only if changed or force refresh every 4 ticks)
-    const shouldExecute = actionChanged || (state.runCount % 4 === 0)
+    // Execute control decision (only if changed or force refresh every 4 ticks)
+    const shouldExecute = settingsChanged || (state.runCount % 4 === 0)
     
     if (shouldExecute) {
-      console.log(`\n🎯 Ejecutando acción batería: ${batteryDecision.action}`)
-      const success = await applyChargingAction(batteryDecision.action)
+      console.log(`\n⚡ Applying control to inverter...`)
+      const success = await applyControlDecision({
+        charging: controlDecision.charging,
+        targetSoc: controlDecision.targetSoc,
+        reason: controlDecision.reason,
+      })
       
       if (success) {
         updateDecisionExecution(decisionId, true)
-        console.log('✅ Acción de batería ejecutada correctamente')
+        console.log(`✅ Control applied: Grid charging ${controlDecision.charging === 'Grid' ? 'ON' : 'OFF'}, Target SOC: ${controlDecision.targetSoc}%`)
       } else {
-        updateDecisionExecution(decisionId, false, 'Error al aplicar acción en HA')
-        console.error('❌ Error al ejecutar acción de batería')
+        updateDecisionExecution(decisionId, false, 'Error al aplicar control en HA')
+        console.error('❌ Error applying control decision')
       }
     } else {
-      console.log(`\n⏭️ Acción batería sin cambios (${batteryDecision.action}), no se ejecuta`)
+      console.log(`\n⏭️ Settings unchanged, skipping HA update`)
       updateDecisionExecution(decisionId, true)
     }
+    
+    // Store control decision in state
+    state.lastControl = controlDecision
     
     // ═══════════════════════════════════════════════════════════════════════════
     // LOAD MANAGEMENT
@@ -245,13 +272,14 @@ async function tick(): Promise<void> {
     
     // Update state
     state.lastRun = nowStr
-    state.lastAction = batteryDecision.action
-    state.lastReason = batteryDecision.reason
+    state.lastAction = legacyAction as BatteryAction
+    state.lastReason = controlDecision.reason
+    state.lastControl = controlDecision
     state.consecutiveErrors = 0
     state.lastError = null
     
     stats.successfulRuns++
-    stats.actionCounts[batteryDecision.action]++
+    stats.actionCounts[legacyAction as BatteryAction]++
     
   } catch (error) {
     const errorMsg = (error as Error).message

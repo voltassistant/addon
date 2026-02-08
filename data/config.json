@@ -15,66 +15,79 @@
     "min_solar_watts_for_charge": 500
   },
   "battery": {
-    "capacity_wh": 10000,
-    "max_charge_rate_w": 3000,
-    "max_discharge_rate_w": 3000
+    "capacity_kwh": 32.7,
+    "max_charge_rate_w": 6000,
+    "max_discharge_rate_w": 6000
   },
   "home_assistant": {
     "entities": {
       "sensors": {
-        "battery_soc": "sensor.deye_battery_soc",
-        "battery_power": "sensor.deye_battery_power",
-        "solar_power": "sensor.deye_pv_power",
-        "grid_power": "sensor.deye_grid_power",
-        "load_power": "sensor.deye_load_power",
-        "inverter_temp": "sensor.deye_inverter_temperature"
+        "battery_soc": "sensor.inverter_battery_soc",
+        "battery_power": "sensor.inverter_battery_power",
+        "battery_state": "sensor.inverter_battery_state",
+        "solar_power": "sensor.inverter_pv_power",
+        "grid_power": "sensor.inverter_grid_power",
+        "load_power": "sensor.inverter_load_l1_power",
+        "inverter_temp": "sensor.inverter_temperature"
       },
       "controls": {
-        "work_mode": "select.deye_work_mode",
-        "grid_charge": "switch.deye_grid_charge",
-        "battery_charge_limit": "number.deye_battery_charge_limit",
-        "battery_discharge_limit": "number.deye_battery_discharge_limit"
+        "work_mode": "select.inverter_work_mode",
+        "energy_pattern": "select.inverter_energy_pattern",
+        "time_of_use": "select.inverter_time_of_use",
+        "export_power": "number.inverter_export_surplus_power",
+        "program_1_soc": "number.inverter_program_1_soc",
+        "program_1_charging": "select.inverter_program_1_charging"
       }
     },
     "work_modes": {
-      "self_use": "self_use",
-      "selling_first": "selling_first",
-      "zero_export": "zero_export"
+      "export_first": "Export First",
+      "zero_export_load": "Zero Export To Load",
+      "zero_export_ct": "Zero Export To CT"
+    },
+    "charging_modes": {
+      "disabled": "Disabled",
+      "grid": "Grid",
+      "generator": "Generator"
+    }
+  },
+  "control_strategy": {
+    "description": "Usa program_1 como control dinámico (00:00-23:59)",
+    "default_work_mode": "zero_export_ct",
+    "rules": {
+      "cheap_price_charge": {
+        "condition": "price < P20 AND soc < 80",
+        "action": {
+          "program_1_charging": "Grid",
+          "program_1_soc": 80
+        }
+      },
+      "solar_available": {
+        "condition": "solar > 500W",
+        "action": {
+          "program_1_charging": "Disabled"
+        }
+      },
+      "emergency_low_soc": {
+        "condition": "soc < 15",
+        "action": {
+          "program_1_charging": "Grid",
+          "program_1_soc": 30
+        }
+      },
+      "expensive_price": {
+        "condition": "price > P80",
+        "action": {
+          "program_1_charging": "Disabled",
+          "program_1_soc": 15
+        }
+      }
     }
   },
   "loads": {
-    "enabled": true,
+    "enabled": false,
     "check_interval_seconds": 30,
     "max_inverter_power": 6000,
     "safety_margin_percent": 10,
-    "devices": [
-      {
-        "id": "aire_salon",
-        "name": "Aire acondicionado salón",
-        "entity_id": "switch.aire_salon",
-        "power_watts": 1500,
-        "priority": "comfort",
-        "can_shed": true,
-        "min_off_minutes": 10
-      },
-      {
-        "id": "calentador",
-        "name": "Calentador de agua",
-        "entity_id": "switch.calentador_agua",
-        "power_watts": 2000,
-        "priority": "comfort",
-        "can_shed": true,
-        "min_off_minutes": 30
-      },
-      {
-        "id": "cargador_coche",
-        "name": "Cargador coche eléctrico",
-        "entity_id": "switch.cargador_coche",
-        "power_watts": 3600,
-        "priority": "accessory",
-        "can_shed": true,
-        "min_off_minutes": 5
-      }
-    ]
+    "devices": []
   }
 }

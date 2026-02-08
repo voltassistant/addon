@@ -33,25 +33,40 @@ export interface HAEntitiesConfig {
   sensors: {
     battery_soc: string
     battery_power: string
+    battery_state?: string
     solar_power: string
     grid_power: string
     load_power: string
     inverter_temp?: string
   }
   controls: {
-    work_mode: string
-    grid_charge: string
+    work_mode?: string
+    grid_charge?: string
     battery_charge_limit?: string
     battery_discharge_limit?: string
+    // Simplified control using Program 1
+    program_1_soc?: string
+    program_1_charging?: string
+    energy_pattern?: string
+    time_of_use?: string
+    export_power?: string
   }
 }
 
 export interface HAConfig {
   entities: HAEntitiesConfig
-  work_modes: {
-    self_use: string
-    selling_first: string
-    zero_export: string
+  work_modes?: {
+    self_use?: string
+    selling_first?: string
+    zero_export?: string
+    export_first?: string
+    zero_export_load?: string
+    zero_export_ct?: string
+  }
+  charging_modes?: {
+    disabled: string
+    grid: string
+    generator?: string
   }
 }
 
@@ -109,24 +124,30 @@ const DEFAULT_CONFIG: AppConfig = {
   home_assistant: {
     entities: {
       sensors: {
-        battery_soc: 'sensor.deye_battery_soc',
-        battery_power: 'sensor.deye_battery_power',
-        solar_power: 'sensor.deye_pv_power',
-        grid_power: 'sensor.deye_grid_power',
-        load_power: 'sensor.deye_load_power',
-        inverter_temp: 'sensor.deye_inverter_temperature',
+        battery_soc: 'sensor.inverter_battery_soc',
+        battery_power: 'sensor.inverter_battery_power',
+        battery_state: 'sensor.inverter_battery_state',
+        solar_power: 'sensor.inverter_pv_power',
+        grid_power: 'sensor.inverter_grid_power',
+        load_power: 'sensor.inverter_load_l1_power',
+        inverter_temp: 'sensor.inverter_temperature',
       },
       controls: {
-        work_mode: 'select.deye_work_mode',
-        grid_charge: 'switch.deye_grid_charge',
-        battery_charge_limit: 'number.deye_battery_charge_limit',
-        battery_discharge_limit: 'number.deye_battery_discharge_limit',
+        work_mode: 'select.inverter_work_mode',
+        // Simplified control using Program 1 (covers 00:00-23:59)
+        program_1_soc: 'number.inverter_program_1_soc',
+        program_1_charging: 'select.inverter_program_1_charging',
       },
     },
     work_modes: {
-      self_use: 'self_use',
-      selling_first: 'selling_first',
-      zero_export: 'zero_export',
+      export_first: 'Export First',
+      zero_export_load: 'Zero Export To Load',
+      zero_export_ct: 'Zero Export To CT',
+    },
+    charging_modes: {
+      disabled: 'Disabled',
+      grid: 'Grid',
+      generator: 'Generator',
     },
   },
   loads: {
@@ -326,8 +347,13 @@ export function validateConfig(config: AppConfig): { valid: boolean; errors: str
   if (!sensors.battery_soc) errors.push('Falta entity: sensors.battery_soc')
   if (!sensors.battery_power) errors.push('Falta entity: sensors.battery_power')
   if (!sensors.solar_power) errors.push('Falta entity: sensors.solar_power')
-  if (!controls.work_mode) errors.push('Falta entity: controls.work_mode')
-  if (!controls.grid_charge) errors.push('Falta entity: controls.grid_charge')
+  // Simplified control requires program_1 entities
+  if (!controls.program_1_soc && !controls.grid_charge) {
+    errors.push('Falta entity: controls.program_1_soc o controls.grid_charge')
+  }
+  if (!controls.program_1_charging && !controls.grid_charge) {
+    errors.push('Falta entity: controls.program_1_charging o controls.grid_charge')
+  }
   
   // Loads validation
   if (config.loads.enabled) {

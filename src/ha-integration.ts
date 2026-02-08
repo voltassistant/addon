@@ -4,7 +4,11 @@
  * Provides functions to interact with Home Assistant for:
  * - Reading current battery state
  * - Setting charge/discharge modes on the inverter
- * - Creating automations based on the optimal plan
+ * - Simplified control using Program 1 (00:00-23:59)
+ * 
+ * Control Strategy:
+ * - program_1_charging: "Grid" (charge from grid) or "Disabled" (solar only)
+ * - program_1_soc: Target SOC (15-95%)
  */
 
 import axios from 'axios'
@@ -16,6 +20,45 @@ dotenv.config()
 const HA_URL = process.env.HA_URL || process.env.HOME_ASSISTANT_URL || 'http://localhost:8123'
 const HA_TOKEN = process.env.HA_TOKEN || process.env.HOME_ASSISTANT_TOKEN || ''
 
+// Control entity IDs from config
+interface ControlEntities {
+  program_1_soc: string
+  program_1_charging: string
+  work_mode?: string
+}
+
+// Get control entities from config
+function getControlEntities(): ControlEntities {
+  try {
+    const config = loadConfig()
+    const controls = config.home_assistant.entities.controls
+    return {
+      program_1_soc: controls.program_1_soc || 'number.inverter_program_1_soc',
+      program_1_charging: controls.program_1_charging || 'select.inverter_program_1_charging',
+      work_mode: controls.work_mode,
+    }
+  } catch {
+    // Fallback defaults
+    return {
+      program_1_soc: 'number.inverter_program_1_soc',
+      program_1_charging: 'select.inverter_program_1_charging',
+    }
+  }
+}
+
+// Get charging mode values from config
+function getChargingModes(): { disabled: string; grid: string } {
+  try {
+    const config = loadConfig()
+    return {
+      disabled: config.home_assistant.charging_modes?.disabled || 'Disabled',
+      grid: config.home_assistant.charging_modes?.grid || 'Grid',
+    }
+  } catch {
+    return { disabled: 'Disabled', grid: 'Grid' }
+  }
+}
+
 // Get entities from config (with fallback to defaults)
 function getEntities(): HAEntitiesConfig {
   try {
@@ -24,33 +67,28 @@ function getEntities(): HAEntitiesConfig {
     // Fallback if config not available
     return {
       sensors: {
-        battery_soc: 'sensor.deye_battery_soc',
-        battery_power: 'sensor.deye_battery_power',
-        solar_power: 'sensor.deye_pv_power',
-        grid_power: 'sensor.deye_grid_power',
-        load_power: 'sensor.deye_load_power',
-        inverter_temp: 'sensor.deye_inverter_temperature',
+        battery_soc: 'sensor.inverter_battery_soc',
+        battery_power: 'sensor.inverter_battery_power',
+        solar_power: 'sensor.inverter_pv_power',
+        grid_power: 'sensor.inverter_grid_power',
+        load_power: 'sensor.inverter_load_l1_power',
+        inverter_temp: 'sensor.inverter_temperature',
       },
       controls: {
-        work_mode: 'select.deye_work_mode',
-        grid_charge: 'switch.deye_grid_charge',
-        battery_charge_limit: 'number.deye_battery_charge_limit',
-        battery_discharge_limit: 'number.deye_battery_discharge_limit',
+        work_mode: 'select.inverter_work_mode',
+        program_1_soc: 'number.inverter_program_1_soc',
+        program_1_charging: 'select.inverter_program_1_charging',
       },
     }
   }
 }
 
-function getWorkModes(): { self_use: string; selling_first: string; zero_export: string } {
+function getWorkModes(): { export_first?: string; zero_export_load?: string; zero_export_ct?: string; self_use?: string; selling_first?: string; zero_export?: string } {
   try {
     const config = loadConfig()
-    return config.home_assistant.work_modes
+    return config.home_assistant.work_modes || {}
   } catch {
-    return {
-      self_use: 'self_use',
-      selling_first: 'selling_first',
-      zero_export: 'zero_export',
-    }
+    return {}
   }
 }
 
@@ -176,44 +214,85 @@ export async function getBatteryStatus(): Promise<BatteryStatus | null> {
 }
 
 /**
- * Enable grid charging
+ * Set grid charging mode (simplified control using Program 1)
+ * @param enabled - true = charge from grid, false = solar only
  */
-export async function enableGridCharge(): Promise<boolean> {
-  const entities = getEntities()
-  console.log('🔌 Enabling grid charge...')
-  return setEntityState(entities.controls.grid_charge, 'on')
-}
-
-/**
- * Disable grid charging
- */
-export async function disableGridCharge(): Promise<boolean> {
-  const entities = getEntities()
-  console.log('🔌 Disabling grid charge...')
-  return setEntityState(entities.controls.grid_charge, 'off')
-}
-
-/**
- * Set battery charge limit
- */
-export async function setBatteryChargeLimit(limitPercent: number): Promise<boolean> {
-  const entities = getEntities()
-  if (!entities.controls.battery_charge_limit) {
-    console.log('⚠️ Battery charge limit entity not configured')
-    return false
+export async function setGridCharging(enabled: boolean): Promise<boolean> {
+  const controls = getControlEntities()
+  const modes = getChargingModes()
+  const targetMode = enabled ? modes.grid : modes.disabled
+  
+  console.log(`🔌 Setting grid charging: ${enabled ? 'ON (Grid)' : 'OFF (Disabled)'}`)
+  console.log(`   Entity: ${controls.program_1_charging} → ${targetMode}`)
+  
+  const success = await setEntityState(controls.program_1_charging, targetMode)
+  if (!success) {
+    console.error(`❌ Failed to set ${controls.program_1_charging}`)
   }
-  console.log(`🔋 Setting charge limit to ${limitPercent}%...`)
-  return setEntityState(entities.controls.battery_charge_limit, limitPercent.toString())
+  return success
 }
 
 /**
- * Set work mode
+ * Set target SOC for Program 1
+ * @param soc - Target SOC percentage (15-95)
  */
-export async function setWorkMode(mode: 'selling_first' | 'zero_export' | 'self_use'): Promise<boolean> {
+export async function setTargetSOC(soc: number): Promise<boolean> {
+  const controls = getControlEntities()
+  const clampedSoc = Math.max(15, Math.min(95, soc))
+  
+  console.log(`🎯 Setting target SOC: ${clampedSoc}%`)
+  console.log(`   Entity: ${controls.program_1_soc} → ${clampedSoc}`)
+  
+  const success = await setEntityState(controls.program_1_soc, clampedSoc.toString())
+  if (!success) {
+    console.error(`❌ Failed to set ${controls.program_1_soc}`)
+  }
+  return success
+}
+
+/**
+ * Get current charging settings from HA
+ */
+export async function getCurrentSettings(): Promise<{ charging: string; targetSoc: number } | null> {
+  const controls = getControlEntities()
+  
+  const [chargingState, socState] = await Promise.all([
+    getEntityState(controls.program_1_charging),
+    getEntityState(controls.program_1_soc),
+  ])
+  
+  if (!chargingState || !socState) {
+    return null
+  }
+  
+  return {
+    charging: chargingState.state,
+    targetSoc: parseFloat(socState.state) || 80,
+  }
+}
+
+// Legacy functions for backwards compatibility
+export async function enableGridCharge(): Promise<boolean> {
+  return setGridCharging(true)
+}
+
+export async function disableGridCharge(): Promise<boolean> {
+  return setGridCharging(false)
+}
+
+export async function setBatteryChargeLimit(limitPercent: number): Promise<boolean> {
+  return setTargetSOC(limitPercent)
+}
+
+export async function setWorkMode(mode: string): Promise<boolean> {
   const entities = getEntities()
   const workModes = getWorkModes()
-  const modeValue = workModes[mode]
-  console.log(`⚙️ Setting work mode to ${mode} (${modeValue})...`)
+  const modeValue = (workModes as Record<string, string>)[mode] || mode
+  console.log(`⚙️ Setting work mode: ${mode} (${modeValue})`)
+  if (!entities.controls.work_mode) {
+    console.log('⚠️ Work mode entity not configured, skipping')
+    return true
+  }
   return setEntityState(entities.controls.work_mode, modeValue)
 }
 
@@ -241,33 +320,77 @@ export async function fireEvent(eventType: string, eventData: Record<string, any
 }
 
 /**
- * Apply charging action based on plan
+ * Apply simplified control decision
+ * Uses ONLY program_1_soc to control everything:
+ * - SOC = 0% means don't charge from grid
+ * - SOC > 0% means charge up to that level
+ * (program_1_charging stays at "Grid" always)
+ */
+export interface ControlDecision {
+  targetSoc: number  // 0 = disabled, 30/80/95 = charge to that level
+  reason: string
+}
+
+export async function applyControlDecision(decision: ControlDecision): Promise<boolean> {
+  console.log(`\n🎯 Applying control decision:`)
+  console.log(`   Target SOC: ${decision.targetSoc}% ${decision.targetSoc === 0 ? '(grid charge disabled)' : '(grid charge enabled)'}`)
+  console.log(`   Reason: ${decision.reason}`)
+  
+  try {
+    const ok = await setTargetSOC(decision.targetSoc)
+    
+    if (ok) {
+      console.log(`✅ Control decision applied successfully`)
+      return true
+    } else {
+      console.error(`⚠️ Failed to set target SOC`)
+      return false
+    }
+  } catch (error) {
+    console.error(`❌ Failed to apply control decision:`, (error as Error).message)
+    return false
+  }
+}
+
+/**
+ * Apply charging action based on plan (legacy interface)
+ * Maps old actions to new simplified control
  */
 export async function applyChargingAction(action: 'charge_from_grid' | 'charge_from_solar' | 'discharge' | 'idle'): Promise<boolean> {
-  const workModes = getWorkModes()
-  
   try {
     switch (action) {
       case 'charge_from_grid':
-        await enableGridCharge()
-        await setWorkMode('self_use')
-        return true
+        // Grid charging enabled, target 80%
+        return applyControlDecision({
+          charging: 'Grid',
+          targetSoc: 80,
+          reason: 'Grid charging requested',
+        })
         
       case 'charge_from_solar':
-        await disableGridCharge()
-        await setWorkMode('self_use')
-        return true
+        // Disable grid charging, let solar do its thing, target 95%
+        return applyControlDecision({
+          charging: 'Disabled',
+          targetSoc: 95,
+          reason: 'Solar charging mode',
+        })
         
       case 'discharge':
-        await disableGridCharge()
-        await setWorkMode('selling_first')
-        return true
+        // Disable grid charging, low target to allow discharge
+        return applyControlDecision({
+          charging: 'Disabled',
+          targetSoc: 15,
+          reason: 'Discharge/selling mode',
+        })
         
       case 'idle':
       default:
-        await disableGridCharge()
-        await setWorkMode('self_use')
-        return true
+        // Disable grid charging, moderate target
+        return applyControlDecision({
+          charging: 'Disabled',
+          targetSoc: 50,
+          reason: 'Idle/standby mode',
+        })
     }
   } catch (error) {
     console.error(`Failed to apply action ${action}:`, (error as Error).message)
