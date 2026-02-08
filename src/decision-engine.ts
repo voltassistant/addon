@@ -17,8 +17,7 @@ export type BatteryAction = 'charge_from_grid' | 'charge_from_solar' | 'discharg
 
 // Simplified control decision
 export interface SimpleControlDecision {
-  charging: 'Grid' | 'Disabled'
-  targetSoc: number
+  targetSoc: number  // 0 = no grid charge, 30/80/95 = charge to that %
   reason: string
   pricePercentile: number
 }
@@ -360,7 +359,7 @@ export function makeSimpleDecision(
   // Rule 1: EMERGENCY - SOC < 15% → Force grid charging to 30%
   if (soc < thresholds.emergency_soc) {
     return {
-      charging: 'Grid',
+      
       targetSoc: 30,
       reason: `⚠️ EMERGENCY: SOC critical (${soc}%) - forcing grid charge to 30%`,
       pricePercentile,
@@ -370,7 +369,7 @@ export function makeSimpleDecision(
   // Rule 2: CHEAP PRICE - Price < P20 AND SOC < 80% → Grid charging to 80%
   if (pricePercentile <= thresholds.price_percentile_low && soc < thresholds.target_soc) {
     return {
-      charging: 'Grid',
+      
       targetSoc: thresholds.target_soc,
       reason: `💚 Cheap price (P${pricePercentile}, ${(price * 100).toFixed(1)}¢) - grid charging to ${thresholds.target_soc}%`,
       pricePercentile,
@@ -380,7 +379,7 @@ export function makeSimpleDecision(
   // Rule 3: SOLAR AVAILABLE - Solar > 500W → Disable grid charging (solar only)
   if (solarWatts >= thresholds.min_solar_watts_for_charge) {
     return {
-      charging: 'Disabled',
+      
       targetSoc: thresholds.max_soc,
       reason: `☀️ Solar available (${solarWatts}W) - solar only charging to ${thresholds.max_soc}%`,
       pricePercentile,
@@ -390,7 +389,7 @@ export function makeSimpleDecision(
   // Rule 4: EXPENSIVE PRICE - Price > P80 → Disable grid charging, low target
   if (pricePercentile >= thresholds.price_percentile_high) {
     return {
-      charging: 'Disabled',
+      
       targetSoc: thresholds.min_soc,
       reason: `💰 Expensive price (P${pricePercentile}, ${(price * 100).toFixed(1)}¢) - discharge allowed`,
       pricePercentile,
@@ -399,7 +398,7 @@ export function makeSimpleDecision(
   
   // Rule 5: DEFAULT - Normal conditions, disable grid charging, moderate target
   return {
-    charging: 'Disabled',
+    
     targetSoc: 50,
     reason: `⏸️ Normal conditions (P${pricePercentile}, SOC ${soc}%, Solar ${solarWatts}W) - standby`,
     pricePercentile,
