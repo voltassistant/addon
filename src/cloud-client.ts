@@ -64,9 +64,12 @@ type OutgoingMessage = {
 // DEFAULT CONFIG
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Get cloud URL from environment or use local default
+const ENV_CLOUD_URL = process.env.CLOUD_URL || 'ws://localhost:3000/ws';
+
 const DEFAULT_CONFIG: CloudConfig = {
   enabled: false,
-  cloudUrl: 'wss://voltassistant.io/ws',
+  cloudUrl: ENV_CLOUD_URL,
   apiKey: '',
   reportInterval: 300, // 5 minutes
   heartbeatInterval: 30,
