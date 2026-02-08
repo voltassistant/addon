@@ -6,7 +6,7 @@
 
 import { getPVPCPrices, PVPCDay } from './pvpc'
 import { getSolarForecast, SolarDay } from './solar'
-import { getBatteryStatus, applyControlDecision, checkConnection, testConnection, ControlDecision, getCurrentTargetSOC, getCurrentSettings } from './ha-integration'
+import { getBatteryStatus, applyControlDecision, checkConnection, testConnection, ControlDecision, getCurrentTargetSOC } from './ha-integration'
 import { makeFullDecision, makeSimpleDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision, SimpleControlDecision } from './decision-engine'
 import { saveDecision, updateDecisionExecution, getLastDecision, saveHourlyStat, Decision } from './storage'
 import { loadConfig, SchedulerConfig, getLoadsConfig } from './config'
