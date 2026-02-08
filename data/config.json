@@ -22,7 +22,7 @@
   "home_assistant": {
     "entities": {
       "sensors": {
-        "battery_soc": "sensor.inverter_battery_soc",
+        "battery_soc": "sensor.predbat_battery_soc_2",
         "battery_power": "sensor.inverter_battery_power",
         "battery_state": "sensor.inverter_battery_state",
         "solar_power": "sensor.inverter_pv_power",

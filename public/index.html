@@ -278,52 +278,6 @@
     
     .code-block .comment { color: var(--text-muted); }
     
-    /* API Docs */
-    .api-docs {
-      padding: 80px 0;
-    }
-    
-    .endpoint-list {
-      display: grid;
-      gap: 16px;
-      margin-top: 32px;
-    }
-    
-    .endpoint {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      display: grid;
-      grid-template-columns: 80px 200px 1fr;
-      gap: 16px;
-      align-items: center;
-    }
-    
-    .endpoint:hover {
-      border-color: var(--accent-dim);
-    }
-    
-    .method {
-      font-family: monospace;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 4px 8px;
-      border-radius: 4px;
-      text-align: center;
-    }
-    
-    .method.get { background: #0066ff22; color: #4488ff; }
-    .method.post { background: #00ff8822; color: var(--accent); }
-    .method.delete { background: #ff444422; color: var(--danger); }
-    
-    .endpoint-path {
-      font-family: monospace;
-      font-size: 14px;
-      color: var(--text);
-    }
-    
-    .endpoint-desc {
       color: var(--text-muted);
       font-size: 14px;
     }
@@ -390,7 +344,6 @@
     @media (max-width: 768px) {
       .hero h1 { font-size: 32px; }
       .hero p { font-size: 16px; }
-      .endpoint { grid-template-columns: 1fr; gap: 8px; }
       .install-step { padding-left: 50px; }
     }
     
@@ -459,7 +412,6 @@
       <nav class="nav">
         <a href="#features">Features</a>
         <a href="#install">Installation</a>
-        <a href="#api">API</a>
         <a href="#status">Status</a>
       </nav>
     </div>
@@ -614,67 +566,6 @@
     </div>
   </section>
   
-  <section id="api" class="api-docs">
-    <div class="container">
-      <div class="section-title">
-        <h2>🔌 API Reference</h2>
-        <p>Integrate VoltAssistant with your automations</p>
-      </div>
-      
-      <div class="endpoint-list">
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/health</span>
-          <span class="endpoint-desc">Health check endpoint</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/status</span>
-          <span class="endpoint-desc">Real-time inverter status from HA</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/dashboard</span>
-          <span class="endpoint-desc">Combined status + plan + prices</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/plan</span>
-          <span class="endpoint-desc">Today's charging optimization plan</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/prices</span>
-          <span class="endpoint-desc">PVPC electricity prices</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/solar</span>
-          <span class="endpoint-desc">Solar generation forecast</span>
-        </div>
-        <div class="endpoint">
-          <span class="method post">POST</span>
-          <span class="endpoint-path">/webhook/ha</span>
-          <span class="endpoint-desc">Webhook for Home Assistant automations</span>
-        </div>
-        <div class="endpoint">
-          <span class="method post">POST</span>
-          <span class="endpoint-path">/control</span>
-          <span class="endpoint-desc">Control inverter mode (charge/discharge/auto)</span>
-        </div>
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <span class="endpoint-path">/loads/status</span>
-          <span class="endpoint-desc">Load manager status</span>
-        </div>
-        <div class="endpoint">
-          <span class="method post">POST</span>
-          <span class="endpoint-path">/loads/balance</span>
-          <span class="endpoint-desc">Trigger load balancing</span>
-        </div>
-      </div>
-    </div>
-  </section>
   
   <section id="status" class="live-status">
     <div class="container">
