@@ -157,7 +157,7 @@ async function tick(): Promise<void> {
     // Log the simplified decision clearly
     console.log(`\n${'─'.repeat(50)}`)
     console.log(`🎯 CONTROL DECISION:`)
-    console.log(`   Grid Charging: ${controlDecision.charging === 'Grid' ? '✅ ON' : '❌ OFF'}`)
+    console.log(`   Grid Charging: ${controlDecision.targetSoc > 0 ? '✅ ON' : '❌ OFF'}`)
     console.log(`   Target SOC: ${controlDecision.targetSoc}%`)
     console.log(`   Reason: ${controlDecision.reason}`)
     console.log(`${'─'.repeat(50)}`)
@@ -165,11 +165,11 @@ async function tick(): Promise<void> {
     // Check current settings from HA
     const currentSettings = await getCurrentSettings()
     const settingsChanged = !currentSettings || 
-      currentSettings.charging !== controlDecision.charging ||
+      
       currentSettings.targetSoc !== controlDecision.targetSoc
     
     // Save decision to database (using legacy action mapping for compatibility)
-    const legacyAction = controlDecision.charging === 'Grid' ? 'charge_from_grid' : 'idle'
+    const legacyAction = controlDecision.targetSoc > 0 ? 'charge_from_grid' : 'idle'
     const decisionRecord: Decision = {
       timestamp: nowStr,
       soc: batteryStatus.soc,
@@ -187,14 +187,14 @@ async function tick(): Promise<void> {
     if (shouldExecute) {
       console.log(`\n⚡ Applying control to inverter...`)
       const success = await applyControlDecision({
-        charging: controlDecision.charging,
+        
         targetSoc: controlDecision.targetSoc,
         reason: controlDecision.reason,
       })
       
       if (success) {
         updateDecisionExecution(decisionId, true)
-        console.log(`✅ Control applied: Grid charging ${controlDecision.charging === 'Grid' ? 'ON' : 'OFF'}, Target SOC: ${controlDecision.targetSoc}%`)
+        console.log(`✅ Control applied: Grid charging ${controlDecision.targetSoc > 0 ? 'ON' : 'OFF'}, Target SOC: ${controlDecision.targetSoc}%`)
       } else {
         updateDecisionExecution(decisionId, false, 'Error al aplicar control en HA')
         console.error('❌ Error applying control decision')
