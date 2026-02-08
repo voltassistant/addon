@@ -322,12 +322,13 @@ export async function fireEvent(eventType: string, eventData: Record<string, any
 /**
  * Apply simplified control decision
  * Uses ONLY program_1_soc to control everything:
- * - SOC = 0% means don't charge from grid
- * - SOC > 0% means charge up to that level
- * (program_1_charging stays at "Grid" always)
+/**
+ * Apply simplified control decision
+ * Uses Program 1 to control charging behavior
  */
 export interface ControlDecision {
-  targetSoc: number  // 0 = disabled, 30/80/95 = charge to that level
+  charging: 'Grid' | 'Disabled'
+  targetSoc: number
   reason: string
 }
 
