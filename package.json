@@ -28,10 +28,12 @@
     "@types/better-sqlite3": "^7.6.13",
     "axios": "^1.6.0",
     "better-sqlite3": "^12.6.2",
-    "dotenv": "^16.3.0"
+    "dotenv": "^16.3.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/ws": "^8.18.1",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0"
   }

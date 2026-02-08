@@ -58,6 +58,10 @@ import {
   getSchedulerConfig,
   getLoadsConfig,
 } from './config'
+import {
+  getCloudClient,
+  initCloudClient,
+} from './cloud-client'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -1286,6 +1290,118 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       sendJSON(res, 500, { success: false, error: (error as Error).message })
     }
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CLOUD ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get cloud connection status
+  'GET /cloud/status': async (req, res) => {
+    try {
+      const cloudClient = getCloudClient()
+      const state = cloudClient.getState()
+      const config = cloudClient.getConfig()
+      
+      sendJSON(res, 200, {
+        success: true,
+        connected: state.connected,
+        enabled: config.enabled,
+        cloudUrl: config.cloudUrl,
+        installationId: cloudClient.getInstallationId(),
+        lastConnected: state.lastConnected,
+        lastDisconnected: state.lastDisconnected,
+        reconnectAttempts: state.reconnectAttempts,
+        offlineQueueSize: state.offlineQueueSize,
+        lastError: state.lastError,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Link addon to cloud account
+  'POST /cloud/link': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const { apiKey, cloudUrl } = body as { apiKey?: string; cloudUrl?: string }
+      
+      if (!apiKey) {
+        sendJSON(res, 400, { success: false, error: 'API key required' })
+        return
+      }
+      
+      const cloudClient = getCloudClient()
+      const connected = cloudClient.link(apiKey, cloudUrl)
+      
+      // Wait a bit for connection
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      const state = cloudClient.getState()
+      
+      sendJSON(res, 200, {
+        success: true,
+        connected: state.connected,
+        installationId: cloudClient.getInstallationId(),
+        message: state.connected 
+          ? 'Successfully linked to cloud'
+          : 'Link initiated, connection pending',
+        lastError: state.lastError,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Unlink addon from cloud
+  'POST /cloud/unlink': async (req, res) => {
+    try {
+      const cloudClient = getCloudClient()
+      cloudClient.unlink()
+      
+      sendJSON(res, 200, {
+        success: true,
+        message: 'Unlinked from cloud',
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Update cloud config
+  'POST /cloud/config': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const cloudClient = getCloudClient()
+      const config = cloudClient.updateConfig(body as any)
+      
+      sendJSON(res, 200, {
+        success: true,
+        config: {
+          enabled: config.enabled,
+          cloudUrl: config.cloudUrl,
+          reportInterval: config.reportInterval,
+          heartbeatInterval: config.heartbeatInterval,
+        },
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Force reconnect to cloud
+  'POST /cloud/reconnect': async (req, res) => {
+    try {
+      const cloudClient = getCloudClient()
+      const connected = cloudClient.connect()
+      
+      sendJSON(res, 200, {
+        success: true,
+        message: connected ? 'Reconnection initiated' : 'Cloud not enabled or no API key',
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
 }
 
 // Serve static files
@@ -1402,6 +1518,13 @@ export function startServer() {
     console.log('   POST /loads/enable   - Enable/disable load manager')
     console.log('   POST /loads/restore-all - Restore all shed loads')
     console.log('   POST /webhook/loads  - HA webhook trigger')
+    console.log('')
+    console.log('☁️ Cloud Sync:')
+    console.log('   GET  /cloud/status   - Cloud connection status')
+    console.log('   POST /cloud/link     - Link addon to cloud account')
+    console.log('   POST /cloud/unlink   - Unlink from cloud')
+    console.log('   POST /cloud/config   - Update cloud config')
+    console.log('   POST /cloud/reconnect - Force reconnect')
     
     // Start scheduler if enabled
     const schedulerConfig = getSchedulerConfig()
@@ -1419,6 +1542,19 @@ export function startServer() {
     const deviceCount = loadsConfig.devices?.length || 0
     if (loadsConfig.enabled) {
       console.log(`🔌 Gestión de cargas ACTIVA (${deviceCount} dispositivos configurados)`)
+    }
+    
+    // Initialize cloud client
+    try {
+      const cloudClient = initCloudClient()
+      const cloudConfig = cloudClient.getConfig()
+      if (cloudConfig.enabled && cloudConfig.apiKey) {
+        console.log(`☁️ Cloud sync ACTIVO → ${cloudConfig.cloudUrl}`)
+      } else {
+        console.log('☁️ Cloud sync deshabilitado')
+      }
+    } catch (error) {
+      console.log('☁️ Cloud client error:', (error as Error).message)
     }
   })
   

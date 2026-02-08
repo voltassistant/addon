@@ -11,6 +11,7 @@ import { makeFullDecision, makeSimpleDecision, DecisionThresholds, DEFAULT_THRES
 import { saveDecision, updateDecisionExecution, getLastDecision, saveHourlyStat, Decision } from './storage'
 import { loadConfig, SchedulerConfig, getLoadsConfig } from './config'
 import { executeLoadActions, LoadEvaluationResult, getLoadManagerState } from './load-manager'
+import { getCloudClient } from './cloud-client'
 
 export interface SchedulerState {
   isRunning: boolean
@@ -179,6 +180,31 @@ async function tick(): Promise<void> {
     }
     const decisionId = saveDecision(decisionRecord)
     
+    // Report decision to cloud
+    try {
+      const cloudClient = getCloudClient()
+      cloudClient.reportDecision({
+        timestamp: nowStr,
+        soc: batteryStatus.soc,
+        price: currentPrice,
+        solar_watts: batteryStatus.solarPower,
+        action: legacyAction,
+        reason: controlDecision.reason,
+      })
+      
+      // Report current status to cloud
+      cloudClient.reportStatus({
+        soc: batteryStatus.soc,
+        solar: batteryStatus.solarPower,
+        grid: batteryStatus.gridPower,
+        load: batteryStatus.loadPower,
+        battery_state: batteryStatus.isCharging ? 'charging' : batteryStatus.isDischarging ? 'discharging' : 'idle',
+      })
+    } catch (cloudError) {
+      // Cloud reporting is optional, don't fail the tick
+      console.log(`☁️ Cloud report skipped: ${(cloudError as Error).message}`)
+    }
+    
     // Execute control decision (only if changed or force refresh every 4 ticks)
     const shouldExecute = settingsChanged || (state.runCount % 4 === 0)
     
@@ -255,7 +281,7 @@ async function tick(): Promise<void> {
     // Save hourly stats (at minute 0 or first run of the hour)
     const minute = now.getMinutes()
     if (minute < 15) { // First tick of the hour
-      saveHourlyStat({
+      const hourlyStat = {
         date: dateStr,
         hour: currentHour,
         price: currentPrice,
@@ -264,7 +290,25 @@ async function tick(): Promise<void> {
         grid_import_kwh: Math.max(0, batteryStatus.gridPower) / 1000,
         grid_export_kwh: Math.max(0, -batteryStatus.gridPower) / 1000,
         battery_soc: batteryStatus.soc,
-      })
+      }
+      saveHourlyStat(hourlyStat)
+      
+      // Report to cloud
+      try {
+        const cloudClient = getCloudClient()
+        cloudClient.reportHourlyStat({
+          date: dateStr,
+          hour: currentHour,
+          soc: batteryStatus.soc,
+          price: currentPrice,
+          solar_kwh: hourlyStat.solar_kwh,
+          consumption_kwh: hourlyStat.consumption_kwh,
+          grid_import_kwh: hourlyStat.grid_import_kwh,
+          grid_export_kwh: hourlyStat.grid_export_kwh,
+        })
+      } catch {
+        // Ignore cloud errors
+      }
     }
     
     // Update state
