@@ -11,12 +11,14 @@ import { getPVPCPrices, formatPrice } from './pvpc'
 import { getSolarForecast } from './solar'
 import { generateChargingPlan, formatPlan, BatteryConfig } from './optimizer'
 import { getInverterStatus } from './realtime'
-import { applyChargingAction, checkConnection } from './ha-integration'
+import { applyChargingAction, checkConnection, verifyEntities, getFullStatus } from './ha-integration'
 import { getDayHistory, getWeekHistory, findBestChargingWindows } from './history'
 import { 
   getConfig, setConfig, resetConfig, 
-  getActiveAlerts, getAlertHistory, 
-  acknowledgeAlert, clearAlert, checkAlerts 
+  getActiveAlerts as getActiveAlertsLegacy, 
+  getAlertHistory as getAlertHistoryLegacy, 
+  acknowledgeAlert as acknowledgeAlertLegacy, 
+  clearAlert, checkAlerts 
 } from './alerts'
 import {
   getLoadManagerConfig, setLoadManagerConfig,
@@ -24,6 +26,33 @@ import {
   balanceLoads, addLoad, removeLoad, updateLoad,
   forceRestoreAll, setEnabled as setLoadManagerEnabled,
 } from './load-manager'
+import {
+  start as startScheduler,
+  stop as stopScheduler,
+  pause as pauseScheduler,
+  resume as resumeScheduler,
+  getState as getSchedulerState,
+  getStats as getSchedulerStats,
+  forceTick,
+  clearCache as clearSchedulerCache,
+  restart as restartScheduler,
+} from './scheduler'
+import {
+  getRecentDecisions,
+  getActiveAlerts as getActiveAlertsDb,
+  getAlertHistory as getAlertHistoryDb,
+  acknowledgeAlert as acknowledgeAlertDb,
+  getDatabaseStats,
+  cleanupOldData,
+  getDb,
+} from './storage'
+import {
+  loadConfig as loadAppConfig,
+  updateConfig as updateAppConfig,
+  resetConfig as resetAppConfig,
+  validateConfig,
+  getSchedulerConfig,
+} from './config'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -38,7 +67,9 @@ interface RequestBody {
   detailed?: boolean
   action?: string
   id?: string
-  // Alert config fields (passed through to setConfig)
+  enabled?: boolean | string
+  limit?: number
+  // Config fields
   [key: string]: unknown
 }
 
@@ -54,7 +85,7 @@ const DEFAULT_BATTERY: BatteryConfig = {
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
 }
 
@@ -96,6 +127,8 @@ let requestCounts = {
   solar: 0,
   history: 0,
   control: 0,
+  scheduler: 0,
+  decisions: 0,
 }
 
 // Routes
@@ -103,6 +136,10 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
   
   // Prometheus metrics
   'GET /metrics': async (req, res) => {
+    const schedulerState = getSchedulerState()
+    const schedulerStats = getSchedulerStats()
+    const dbStats = getDatabaseStats()
+    
     const lines = [
       '# HELP voltassistant_up Service status (1 = up)',
       '# TYPE voltassistant_up gauge',
@@ -113,6 +150,30 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       ...Object.entries(requestCounts).map(([k, v]) => 
         `voltassistant_requests_total{endpoint="${k}"} ${v}`
       ),
+      '',
+      '# HELP voltassistant_scheduler_running Scheduler running status',
+      '# TYPE voltassistant_scheduler_running gauge',
+      `voltassistant_scheduler_running ${schedulerState.isRunning ? 1 : 0}`,
+      '',
+      '# HELP voltassistant_scheduler_paused Scheduler paused status',
+      '# TYPE voltassistant_scheduler_paused gauge',
+      `voltassistant_scheduler_paused ${schedulerState.isPaused ? 1 : 0}`,
+      '',
+      '# HELP voltassistant_scheduler_runs_total Total scheduler runs',
+      '# TYPE voltassistant_scheduler_runs_total counter',
+      `voltassistant_scheduler_runs_total ${schedulerStats.totalRuns}`,
+      '',
+      '# HELP voltassistant_scheduler_errors_total Total scheduler errors',
+      '# TYPE voltassistant_scheduler_errors_total counter',
+      `voltassistant_scheduler_errors_total ${schedulerStats.failedRuns}`,
+      '',
+      '# HELP voltassistant_decisions_total Total decisions in database',
+      '# TYPE voltassistant_decisions_total gauge',
+      `voltassistant_decisions_total ${dbStats.decisions}`,
+      '',
+      '# HELP voltassistant_active_alerts Active alerts count',
+      '# TYPE voltassistant_active_alerts gauge',
+      `voltassistant_active_alerts ${dbStats.activeAlerts}`,
       '',
       '# HELP nodejs_process_uptime_seconds Process uptime',
       '# TYPE nodejs_process_uptime_seconds gauge',
@@ -130,8 +191,259 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
 
   // Health check
   'GET /health': async (req, res) => {
-    sendJSON(res, 200, { status: 'ok', version: '1.0.0', timestamp: new Date().toISOString() })
+    const schedulerState = getSchedulerState()
+    sendJSON(res, 200, { 
+      status: 'ok', 
+      version: '2.0.0', 
+      timestamp: new Date().toISOString(),
+      scheduler: {
+        running: schedulerState.isRunning,
+        paused: schedulerState.isPaused,
+      }
+    })
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SCHEDULER ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get scheduler status
+  'GET /scheduler/status': async (req, res) => {
+    requestCounts.scheduler++
+    const state = getSchedulerState()
+    const stats = getSchedulerStats()
+    const config = getSchedulerConfig()
+    
+    sendJSON(res, 200, {
+      success: true,
+      state,
+      stats,
+      config,
+    })
+  },
+
+  // Start scheduler
+  'POST /scheduler/start': async (req, res) => {
+    requestCounts.scheduler++
+    const result = startScheduler()
+    const state = getSchedulerState()
+    
+    sendJSON(res, 200, {
+      success: result,
+      message: result ? 'Scheduler iniciado' : 'Scheduler ya estaba corriendo',
+      state,
+    })
+  },
+
+  // Stop scheduler
+  'POST /scheduler/stop': async (req, res) => {
+    requestCounts.scheduler++
+    const result = stopScheduler()
+    const state = getSchedulerState()
+    
+    sendJSON(res, 200, {
+      success: result,
+      message: result ? 'Scheduler detenido' : 'Scheduler no estaba corriendo',
+      state,
+    })
+  },
+
+  // Pause scheduler
+  'POST /scheduler/pause': async (req, res) => {
+    requestCounts.scheduler++
+    const result = pauseScheduler()
+    const state = getSchedulerState()
+    
+    sendJSON(res, 200, {
+      success: result,
+      message: result ? 'Scheduler pausado' : 'No se pudo pausar',
+      state,
+    })
+  },
+
+  // Resume scheduler
+  'POST /scheduler/resume': async (req, res) => {
+    requestCounts.scheduler++
+    const result = resumeScheduler()
+    const state = getSchedulerState()
+    
+    sendJSON(res, 200, {
+      success: result,
+      message: result ? 'Scheduler reanudado' : 'No se pudo reanudar',
+      state,
+    })
+  },
+
+  // Force immediate tick
+  'POST /scheduler/tick': async (req, res) => {
+    requestCounts.scheduler++
+    try {
+      await forceTick()
+      const state = getSchedulerState()
+      sendJSON(res, 200, {
+        success: true,
+        message: 'Tick ejecutado',
+        state,
+      })
+    } catch (error) {
+      sendJSON(res, 500, {
+        success: false,
+        error: (error as Error).message,
+      })
+    }
+  },
+
+  // Restart scheduler with new config
+  'POST /scheduler/restart': async (req, res) => {
+    requestCounts.scheduler++
+    const result = restartScheduler()
+    const state = getSchedulerState()
+    
+    sendJSON(res, 200, {
+      success: result,
+      message: 'Scheduler reiniciado',
+      state,
+    })
+  },
+
+  // Clear scheduler cache
+  'POST /scheduler/clear-cache': async (req, res) => {
+    requestCounts.scheduler++
+    clearSchedulerCache()
+    sendJSON(res, 200, {
+      success: true,
+      message: 'Cache limpiado',
+    })
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DECISIONS ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get decision history
+  'GET /decisions': async (req, res) => {
+    requestCounts.decisions++
+    const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+    
+    const decisions = getRecentDecisions(Math.min(limit, 500))
+    
+    sendJSON(res, 200, {
+      success: true,
+      count: decisions.length,
+      decisions,
+    })
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // APP CONFIG ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get app configuration
+  'GET /config': async (req, res) => {
+    const config = loadAppConfig()
+    const validation = validateConfig(config)
+    
+    sendJSON(res, 200, {
+      success: true,
+      config,
+      valid: validation.valid,
+      errors: validation.errors,
+    })
+  },
+
+  // Update app configuration
+  'POST /config': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const updated = updateAppConfig(body as any)
+      const validation = validateConfig(updated)
+      
+      sendJSON(res, 200, {
+        success: true,
+        config: updated,
+        valid: validation.valid,
+        errors: validation.errors,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Reset app configuration
+  'POST /config/reset': async (req, res) => {
+    const config = resetAppConfig()
+    sendJSON(res, 200, {
+      success: true,
+      config,
+      message: 'Configuración restablecida a valores por defecto',
+    })
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATABASE ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get database stats
+  'GET /db/stats': async (req, res) => {
+    const stats = getDatabaseStats()
+    sendJSON(res, 200, {
+      success: true,
+      ...stats,
+      sizeMB: Math.round(stats.sizeBytes / 1024 / 1024 * 100) / 100,
+    })
+  },
+
+  // Cleanup old data
+  'POST /db/cleanup': async (req, res) => {
+    try {
+      const body = await parseBody(req)
+      const days = typeof body.days === 'number' ? body.days : 90
+      const result = cleanupOldData(days)
+      
+      sendJSON(res, 200, {
+        success: true,
+        ...result,
+        message: `Limpiados datos de más de ${days} días`,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HA INTEGRATION ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Verify HA entities
+  'GET /ha/verify': async (req, res) => {
+    try {
+      const result = await verifyEntities()
+      sendJSON(res, 200, {
+        success: true,
+        ...result,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get full HA status
+  'GET /ha/status': async (req, res) => {
+    try {
+      const status = await getFullStatus()
+      sendJSON(res, 200, {
+        success: true,
+        ...status,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXISTING ROUTES (unchanged)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   // Get today's plan
   'GET /plan': async (req, res) => {
@@ -267,6 +579,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const currentAction = plan.hourlyPlan[currentHour]?.decision.action || 'idle'
       const nextChargeHour = plan.gridChargeHours.find(h => h > currentHour) || null
       
+      // Include scheduler status
+      const schedulerState = getSchedulerState()
+      
       // Return HA-friendly format
       sendJSON(res, 200, {
         current_action: currentAction,
@@ -280,6 +595,11 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         expected_solar_watts: solar.forecasts[currentHour]?.watts || 0,
         recommendations: plan.recommendations,
         estimated_savings: plan.savings,
+        scheduler: {
+          running: schedulerState.isRunning,
+          last_action: schedulerState.lastAction,
+          last_run: schedulerState.lastRun,
+        }
       })
     } catch (error) {
       sendJSON(res, 500, { error: (error as Error).message })
@@ -292,7 +612,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const body = await parseBody(req)
       const { action } = body
       
-      if (!action || !['charge', 'discharge', 'auto', 'idle'].includes(action)) {
+      if (!action || !['charge', 'discharge', 'auto', 'idle'].includes(action as string)) {
         sendJSON(res, 400, { 
           error: 'Invalid action. Use: charge, discharge, auto, or idle' 
         })
@@ -317,7 +637,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         'idle': 'idle',
       }
       
-      const result = await applyChargingAction(actionMap[action])
+      const result = await applyChargingAction(actionMap[action as string])
       
       sendJSON(res, 200, {
         success: result,
@@ -397,6 +717,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const currentHour = new Date().getHours()
       const currentAction = plan.hourlyPlan[currentHour]?.decision.action || 'idle'
       
+      // Add scheduler info
+      const schedulerState = getSchedulerState()
+      
       sendJSON(res, 200, {
         success: true,
         timestamp: new Date().toISOString(),
@@ -416,6 +739,13 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         solar: {
           forecast: solar.totalWh,
           peak: { hour: solar.peakHour, watts: solar.peakWatts },
+        },
+        scheduler: {
+          running: schedulerState.isRunning,
+          paused: schedulerState.isPaused,
+          lastAction: schedulerState.lastAction,
+          lastRun: schedulerState.lastRun,
+          nextRun: schedulerState.nextRun,
         },
       })
     } catch (error) {
@@ -474,12 +804,12 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     }
   },
 
-  // Get alert configuration
+  // Get alert configuration (legacy)
   'GET /alerts/config': async (req, res) => {
     sendJSON(res, 200, { success: true, config: getConfig() })
   },
 
-  // Update alert configuration
+  // Update alert configuration (legacy)
   'POST /alerts/config': async (req, res) => {
     try {
       const body = await parseBody(req)
@@ -490,18 +820,21 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     }
   },
 
-  // Reset alert configuration to defaults
+  // Reset alert configuration to defaults (legacy)
   'POST /alerts/reset': async (req, res) => {
     sendJSON(res, 200, { success: true, config: resetConfig() })
   },
 
-  // Get active alerts
+  // Get active alerts (from both legacy and SQLite)
   'GET /alerts': async (req, res) => {
-    const alerts = getActiveAlerts()
+    const legacyAlerts = getActiveAlertsLegacy()
+    const dbAlerts = getActiveAlertsDb()
+    
     sendJSON(res, 200, { 
       success: true, 
-      count: alerts.length,
-      alerts 
+      count: legacyAlerts.length + dbAlerts.length,
+      legacy: legacyAlerts,
+      stored: dbAlerts,
     })
   },
 
@@ -523,7 +856,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         success: true,
         newAlerts: newAlerts.length,
         alerts: newAlerts,
-        activeAlerts: getActiveAlerts(),
+        activeAlerts: getActiveAlertsLegacy(),
       })
     } catch (error) {
       sendJSON(res, 500, { success: false, error: (error as Error).message })
@@ -538,14 +871,23 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         sendJSON(res, 400, { error: 'Alert ID required' })
         return
       }
-      const result = acknowledgeAlert(body.id as string)
+      
+      // Try both legacy and DB
+      let result = false
+      if (typeof body.id === 'string') {
+        result = acknowledgeAlertLegacy(body.id)
+      }
+      if (typeof body.id === 'number') {
+        result = acknowledgeAlertDb(body.id)
+      }
+      
       sendJSON(res, 200, { success: result })
     } catch (error) {
       sendJSON(res, 500, { success: false, error: (error as Error).message })
     }
   },
 
-  // Clear an alert
+  // Clear an alert (legacy)
   'POST /alerts/clear': async (req, res) => {
     try {
       const body = await parseBody(req)
@@ -564,9 +906,11 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
   'GET /alerts/history': async (req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${PORT}`)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+    
     sendJSON(res, 200, { 
       success: true, 
-      history: getAlertHistory(limit)
+      legacy: getAlertHistoryLegacy(limit),
+      stored: getAlertHistoryDb(limit),
     })
   },
 
@@ -591,6 +935,8 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const hour = now.getHours()
       const greeting = hour < 12 ? 'Buenos días' : hour < 20 ? 'Buenas tardes' : 'Buenas noches'
       
+      const schedulerState = getSchedulerState()
+      
       const lines = [
         `☀️ ${greeting}! Resumen energético:`,
         '',
@@ -605,6 +951,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         `⚠️ Horas caras: ${pvpc.expensiveHours.map(h => `${h}:00`).join(', ')}`,
         '',
         `💰 Ahorro estimado hoy: €${plan.savings.toFixed(2)}`,
+        '',
+        `🤖 Scheduler: ${schedulerState.isRunning ? (schedulerState.isPaused ? 'pausado' : 'activo') : 'detenido'}`,
+        schedulerState.lastAction ? `   Última acción: ${schedulerState.lastAction}` : '',
       ]
       
       // Add alerts if any
@@ -617,7 +966,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       
       sendJSON(res, 200, {
         success: true,
-        report: lines.join('\n'),
+        report: lines.filter(Boolean).join('\n'),
         data: {
           battery: status.battery,
           solar: {
@@ -630,6 +979,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
           },
           savings: plan.savings,
           alerts: status.health.issues,
+          scheduler: schedulerState,
         }
       })
     } catch (error) {
@@ -851,10 +1201,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
 // Start server
 export function startServer() {
+  // Initialize database
+  getDb()
+  
   const server = http.createServer(handleRequest)
   
   server.listen(PORT, () => {
-    console.log(`⚡ VoltAssistant API Server`)
+    console.log(`⚡ VoltAssistant API Server v2.0`)
     console.log(`   Listening on http://0.0.0.0:${PORT}`)
     console.log(`   API Key: ${API_KEY ? 'enabled' : 'disabled'}`)
     console.log('')
@@ -872,6 +1225,22 @@ export function startServer() {
     console.log('   POST /webhook/notify - Notification webhook')
     console.log('   GET  /summary      - Plain text summary')
     console.log('')
+    console.log('🤖 Autonomous Scheduler:')
+    console.log('   GET  /scheduler/status  - Scheduler state and stats')
+    console.log('   POST /scheduler/start   - Start scheduler')
+    console.log('   POST /scheduler/stop    - Stop scheduler')
+    console.log('   POST /scheduler/pause   - Pause scheduler')
+    console.log('   POST /scheduler/resume  - Resume scheduler')
+    console.log('   POST /scheduler/tick    - Force immediate tick')
+    console.log('   GET  /decisions         - Decision history')
+    console.log('')
+    console.log('⚙️ Configuration:')
+    console.log('   GET  /config       - Get app configuration')
+    console.log('   POST /config       - Update configuration')
+    console.log('   GET  /ha/verify    - Verify HA entities')
+    console.log('   GET  /ha/status    - Full HA status')
+    console.log('   GET  /db/stats     - Database statistics')
+    console.log('')
     console.log('🔌 Load Manager:')
     console.log('   GET  /loads/status  - Current load state')
     console.log('   GET  /loads/config  - Get config')
@@ -883,6 +1252,17 @@ export function startServer() {
     console.log('   POST /loads/restore - Force restore all')
     console.log('   POST /loads/enable  - Enable/disable')
     console.log('   POST /webhook/loads - HA webhook trigger')
+    
+    // Start scheduler if enabled
+    const schedulerConfig = getSchedulerConfig()
+    if (schedulerConfig.enabled) {
+      console.log('')
+      console.log('🚀 Iniciando scheduler autónomo...')
+      startScheduler()
+    } else {
+      console.log('')
+      console.log('ℹ️ Scheduler deshabilitado en config')
+    }
   })
   
   return server

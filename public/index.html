@@ -3,377 +3,801 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>⚡ VoltAssistant Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>VoltAssistant - Smart Battery Optimization</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
-    .card { @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6; }
-    .stat-value { @apply text-3xl font-bold; }
-    .stat-label { @apply text-sm text-gray-500 mt-1; }
-    .pulse { animation: pulse 2s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface-2: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e0e0e0;
+      --text-muted: #888888;
+      --accent: #00ff88;
+      --accent-dim: #00cc6a;
+      --accent-glow: rgba(0, 255, 136, 0.15);
+      --danger: #ff4444;
+      --warning: #ffaa00;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    
+    /* Header */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    }
+    
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    
+    .logo-icon {
+      font-size: 32px;
+      filter: drop-shadow(0 0 12px var(--accent));
+    }
+    
+    .logo-text {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent) 0%, #00ccff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .nav { display: flex; gap: 24px; }
+    .nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav a:hover { color: var(--accent); }
+    
+    /* Hero */
+    .hero {
+      padding: 80px 0;
+      text-align: center;
+      background: radial-gradient(ellipse at center top, var(--accent-glow) 0%, transparent 60%);
+    }
+    
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero p {
+      font-size: 20px;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    
+    .hero-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      background: #00ffaa;
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+      transform: translateY(-2px);
+    }
+    
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    /* Status Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 14px;
+      margin-top: 32px;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    /* Features */
+    .features {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+    
+    .section-title {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    
+    .section-title h2 {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+    
+    .section-title p {
+      color: var(--text-muted);
+    }
+    
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+    
+    .feature-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 40px var(--accent-glow);
+      transform: translateY(-4px);
+    }
+    
+    .feature-icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+    }
+    
+    .feature-card h3 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    /* Installation */
+    .installation {
+      padding: 80px 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .install-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px;
+      margin-top: 48px;
+    }
+    
+    .install-step {
+      position: relative;
+      padding-left: 60px;
+    }
+    
+    .step-number {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    
+    .install-step h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+    
+    .install-step p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    
+    .code-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      color: var(--accent);
+    }
+    
+    .code-block .comment { color: var(--text-muted); }
+    
+    /* API Docs */
+    .api-docs {
+      padding: 80px 0;
+    }
+    
+    .endpoint-list {
+      display: grid;
+      gap: 16px;
+      margin-top: 32px;
+    }
+    
+    .endpoint {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 80px 200px 1fr;
+      gap: 16px;
+      align-items: center;
+    }
+    
+    .endpoint:hover {
+      border-color: var(--accent-dim);
+    }
+    
+    .method {
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    
+    .method.get { background: #0066ff22; color: #4488ff; }
+    .method.post { background: #00ff8822; color: var(--accent); }
+    .method.delete { background: #ff444422; color: var(--danger); }
+    
+    .endpoint-path {
+      font-family: monospace;
+      font-size: 14px;
+      color: var(--text);
+    }
+    
+    .endpoint-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    /* Live Status */
+    .live-status {
+      padding: 80px 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-top: 32px;
+    }
+    
+    .status-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    
+    .status-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    
+    .status-card .value {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    
+    .status-card .unit {
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+    
+    /* Footer */
+    footer {
+      padding: 48px 0;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    
+    footer p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      .hero p { font-size: 16px; }
+      .endpoint { grid-template-columns: 1fr; gap: 8px; }
+      .install-step { padding-left: 50px; }
+    }
+    
+    /* Accordion */
+    .accordion { margin-top: 32px; }
+    
+    .accordion-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    
+    .accordion-header {
+      padding: 20px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+    }
+    
+    .accordion-header:hover { background: var(--surface-2); }
+    
+    .accordion-icon {
+      transition: transform 0.3s;
+    }
+    
+    .accordion-item.open .accordion-icon {
+      transform: rotate(180deg);
+    }
+    
+    .accordion-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+    }
+    
+    .accordion-item.open .accordion-content {
+      max-height: 500px;
+    }
+    
+    .accordion-body {
+      padding: 0 20px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    .accordion-body code {
+      background: var(--bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--accent);
+    }
   </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
-  <div class="container mx-auto px-4 py-8 max-w-6xl">
-    <!-- Header -->
-    <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold text-gray-900">⚡ VoltAssistant</h1>
-      <p class="text-gray-600 mt-2">Panel de Control del Sistema Solar</p>
-      <p id="timestamp" class="text-sm text-gray-400 mt-1"></p>
+<body>
+  <header>
+    <div class="container header-content">
+      <a href="/" class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">VoltAssistant</span>
+      </a>
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#install">Installation</a>
+        <a href="#api">API</a>
+        <a href="#status">Status</a>
+      </nav>
     </div>
-
-    <!-- Health Banner -->
-    <div id="health-banner" class="mb-6 rounded-xl p-4 hidden"></div>
-
-    <!-- Main Stats Grid -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-      <!-- Battery -->
-      <div class="card text-center">
-        <div class="text-4xl mb-2">🔋</div>
-        <div id="battery-soc" class="stat-value text-blue-600">--</div>
-        <div class="stat-label">Batería</div>
-        <div id="battery-state" class="text-xs text-gray-400 mt-1"></div>
+  </header>
+  
+  <section class="hero">
+    <div class="container">
+      <h1>Smart Battery Optimization</h1>
+      <p>Maximize your solar investment with intelligent charging, PVPC price optimization, and automated load management for Home Assistant.</p>
+      <div class="hero-buttons">
+        <a href="#install" class="btn btn-primary">🚀 Get Started</a>
+        <a href="/dashboard" class="btn btn-secondary">📊 View Dashboard</a>
       </div>
-
-      <!-- Solar -->
-      <div class="card text-center">
-        <div class="text-4xl mb-2">☀️</div>
-        <div id="solar-power" class="stat-value text-yellow-500">--</div>
-        <div class="stat-label">Producción Solar</div>
-        <div id="solar-today" class="text-xs text-gray-400 mt-1"></div>
-      </div>
-
-      <!-- Grid -->
-      <div class="card text-center">
-        <div class="text-4xl mb-2">🔌</div>
-        <div id="grid-power" class="stat-value">--</div>
-        <div class="stat-label">Red</div>
-        <div id="grid-flow" class="text-xs mt-1"></div>
-      </div>
-
-      <!-- Load -->
-      <div class="card text-center">
-        <div class="text-4xl mb-2">💡</div>
-        <div id="load-power" class="stat-value text-purple-600">--</div>
-        <div class="stat-label">Consumo</div>
-        <div id="load-today" class="text-xs text-gray-400 mt-1"></div>
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        <span id="server-status">Checking connection...</span>
       </div>
     </div>
-
-    <!-- Battery Detail -->
-    <div class="card mb-6">
-      <h2 class="text-xl font-semibold mb-4">🔋 Estado de la Batería</h2>
-      <div class="mb-4">
-        <div class="flex justify-between text-sm mb-1">
-          <span id="battery-kwh">-- kWh</span>
-          <span id="battery-capacity">/ -- kWh</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-6">
-          <div id="battery-bar" class="h-6 rounded-full transition-all duration-500" style="width: 0%"></div>
-        </div>
+  </section>
+  
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-title">
+        <h2>⚡ Powerful Features</h2>
+        <p>Everything you need to optimize your home energy system</p>
       </div>
-      <div class="grid grid-cols-3 gap-4 text-center text-sm">
-        <div>
-          <div id="battery-power" class="font-bold">-- W</div>
-          <div class="text-gray-500">Potencia</div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">💶</div>
+          <h3>PVPC Price Optimization</h3>
+          <p>Automatically fetches Spanish electricity prices and plans charging during the cheapest hours to minimize costs.</p>
         </div>
-        <div>
-          <div id="inverter-temp" class="font-bold">--°C</div>
-          <div class="text-gray-500">Temperatura</div>
+        <div class="feature-card">
+          <div class="feature-icon">☀️</div>
+          <h3>Solar Forecast Integration</h3>
+          <p>Uses weather data to predict solar generation and optimize when to charge from grid vs. wait for sun.</p>
         </div>
-        <div>
-          <div id="current-action" class="font-bold text-green-600">--</div>
-          <div class="text-gray-500">Acción</div>
+        <div class="feature-card">
+          <div class="feature-icon">🔋</div>
+          <h3>Smart Battery Control</h3>
+          <p>Controls your Deye inverter to charge, discharge, or hold based on real-time conditions and forecasts.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚖️</div>
+          <h3>Load Management</h3>
+          <p>Prioritizes loads to stay within contracted power. Essential loads stay on, accessories are shed first.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Real-time Dashboard</h3>
+          <p>Visual monitoring of battery state, power flows, and optimization decisions with historical charts.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔔</div>
+          <h3>Smart Alerts</h3>
+          <p>Configurable alerts for low battery, high prices, temperature issues, and optimization opportunities.</p>
         </div>
       </div>
     </div>
-
-    <!-- Recommendations -->
-    <div class="card mb-6">
-      <h2 class="text-xl font-semibold mb-4">💡 Recomendaciones</h2>
-      <ul id="recommendations" class="space-y-2">
-        <li class="text-gray-500">Cargando...</li>
-      </ul>
-    </div>
-
-    <!-- Price Info -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-      <!-- Current Price -->
-      <div class="card">
-        <h2 class="text-xl font-semibold mb-4">💶 Precio Actual</h2>
-        <div class="text-center">
-          <div id="current-price" class="text-4xl font-bold text-gray-900">--</div>
-          <div class="text-sm text-gray-500">€/kWh</div>
+  </section>
+  
+  <section id="install" class="installation">
+    <div class="container">
+      <div class="section-title">
+        <h2>🛠️ Installation</h2>
+        <p>Get VoltAssistant running in your Home Assistant in minutes</p>
+      </div>
+      
+      <div class="install-steps">
+        <div class="install-step">
+          <div class="step-number">1</div>
+          <h3>Add the Repository</h3>
+          <p>Go to Settings → Add-ons → Add-on Store → ⋮ → Repositories and add:</p>
+          <div class="code-block">https://github.com/arturonaredo/ha-addons</div>
         </div>
-        <div class="mt-4 grid grid-cols-2 gap-4 text-center text-sm">
-          <div>
-            <div id="avg-price" class="font-bold">--</div>
-            <div class="text-gray-500">Media</div>
+        
+        <div class="install-step">
+          <div class="step-number">2</div>
+          <h3>Install the Add-on</h3>
+          <p>Find "VoltAssistant" in the add-on store and click Install. Wait for the installation to complete.</p>
+        </div>
+        
+        <div class="install-step">
+          <div class="step-number">3</div>
+          <h3>Configure Sensors</h3>
+          <p>Open the add-on configuration and set your inverter sensor entity IDs. The web UI provides a visual configuration panel.</p>
+        </div>
+        
+        <div class="install-step">
+          <div class="step-number">4</div>
+          <h3>Start & Enjoy</h3>
+          <p>Start the add-on and open the Web UI. VoltAssistant will begin optimizing your battery automatically.</p>
+        </div>
+      </div>
+      
+      <div class="accordion">
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <span>📋 Required Home Assistant Sensors</span>
+            <span class="accordion-icon">▼</span>
           </div>
-          <div>
-            <div id="savings" class="font-bold text-green-600">--</div>
-            <div class="text-gray-500">Ahorro Est.</div>
+          <div class="accordion-content">
+            <div class="accordion-body">
+              <p>VoltAssistant needs access to these sensors from your inverter integration:</p>
+              <ul style="margin-top:12px;margin-left:20px;">
+                <li><code>sensor.battery_soc</code> - Battery state of charge (%)</li>
+                <li><code>sensor.battery_power</code> - Battery power flow (W)</li>
+                <li><code>sensor.grid_power</code> - Grid import/export (W)</li>
+                <li><code>sensor.load_power</code> - House consumption (W)</li>
+                <li><code>sensor.pv_power</code> - Solar generation (W)</li>
+                <li><code>sensor.pvpc_price</code> - Electricity price (€/kWh)</li>
+              </ul>
+            </div>
           </div>
         </div>
-      </div>
-
-      <!-- Hours -->
-      <div class="card">
-        <h2 class="text-xl font-semibold mb-4">⏰ Horas Óptimas</h2>
-        <div class="space-y-3">
-          <div>
-            <span class="text-green-600 font-medium">🟢 Baratas:</span>
-            <span id="cheap-hours" class="ml-2">--</span>
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <span>🔌 Supported Inverters</span>
+            <span class="accordion-icon">▼</span>
           </div>
-          <div>
-            <span class="text-red-600 font-medium">🔴 Caras:</span>
-            <span id="expensive-hours" class="ml-2">--</span>
+          <div class="accordion-content">
+            <div class="accordion-body">
+              <p>Currently optimized for:</p>
+              <ul style="margin-top:12px;margin-left:20px;">
+                <li>Deye SUN-xK-SG04LP3-EU series</li>
+                <li>Any inverter with Home Assistant integration exposing required sensors</li>
+              </ul>
+              <p style="margin-top:12px;">The system uses HA services to control charging modes, so any inverter with proper HA integration should work.</p>
+            </div>
           </div>
-          <div>
-            <span class="text-blue-600 font-medium">🔌 Cargar:</span>
-            <span id="charge-hours" class="ml-2">--</span>
+        </div>
+        
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <span>🇪🇸 Spanish 2.0TD Tariff Support</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <div class="accordion-body">
+              <p>Full support for Spanish 2.0TD electricity tariff:</p>
+              <ul style="margin-top:12px;margin-left:20px;">
+                <li><strong>Valle (00-08h):</strong> Cheapest hours, optimal for charging</li>
+                <li><strong>Llano (08-10h, 14-18h, 22-00h):</strong> Medium prices</li>
+                <li><strong>Punta (10-14h, 18-22h):</strong> Peak prices, avoid charging</li>
+              </ul>
+              <p style="margin-top:12px;">Configure different contracted power per period to manage load shedding correctly.</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Solar Forecast -->
-    <div class="card">
-      <h2 class="text-xl font-semibold mb-4">☀️ Previsión Solar</h2>
-      <div class="grid grid-cols-2 gap-4 text-center">
-        <div>
-          <div id="solar-forecast" class="text-3xl font-bold text-yellow-500">--</div>
-          <div class="text-sm text-gray-500">kWh esperados hoy</div>
+  </section>
+  
+  <section id="api" class="api-docs">
+    <div class="container">
+      <div class="section-title">
+        <h2>🔌 API Reference</h2>
+        <p>Integrate VoltAssistant with your automations</p>
+      </div>
+      
+      <div class="endpoint-list">
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/health</span>
+          <span class="endpoint-desc">Health check endpoint</span>
         </div>
-        <div>
-          <div id="solar-peak" class="text-3xl font-bold text-orange-500">--</div>
-          <div class="text-sm text-gray-500">Pico a las --:00</div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/status</span>
+          <span class="endpoint-desc">Real-time inverter status from HA</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/dashboard</span>
+          <span class="endpoint-desc">Combined status + plan + prices</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/plan</span>
+          <span class="endpoint-desc">Today's charging optimization plan</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/prices</span>
+          <span class="endpoint-desc">PVPC electricity prices</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/solar</span>
+          <span class="endpoint-desc">Solar generation forecast</span>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="endpoint-path">/webhook/ha</span>
+          <span class="endpoint-desc">Webhook for Home Assistant automations</span>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="endpoint-path">/control</span>
+          <span class="endpoint-desc">Control inverter mode (charge/discharge/auto)</span>
+        </div>
+        <div class="endpoint">
+          <span class="method get">GET</span>
+          <span class="endpoint-path">/loads/status</span>
+          <span class="endpoint-desc">Load manager status</span>
+        </div>
+        <div class="endpoint">
+          <span class="method post">POST</span>
+          <span class="endpoint-path">/loads/balance</span>
+          <span class="endpoint-desc">Trigger load balancing</span>
         </div>
       </div>
     </div>
-
-    <!-- Price Chart -->
-    <div class="card mt-6">
-      <h2 class="text-xl font-semibold mb-4">💶 Precios de Hoy (24h)</h2>
-      <div id="price-chart" class="h-48 flex items-end gap-1"></div>
-      <div class="flex justify-between text-xs text-gray-400 mt-2">
-        <span>0:00</span>
-        <span>6:00</span>
-        <span>12:00</span>
-        <span>18:00</span>
-        <span>23:00</span>
+  </section>
+  
+  <section id="status" class="live-status">
+    <div class="container">
+      <div class="section-title">
+        <h2>📊 Live Status</h2>
+        <p>Real-time data from VoltAssistant API</p>
+      </div>
+      
+      <div class="status-grid">
+        <div class="status-card">
+          <div class="label">Battery</div>
+          <div class="value" id="live-soc">--</div>
+          <div class="unit">%</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Solar</div>
+          <div class="value" id="live-pv">--</div>
+          <div class="unit">W</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Grid</div>
+          <div class="value" id="live-grid">--</div>
+          <div class="unit">W</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Load</div>
+          <div class="value" id="live-load">--</div>
+          <div class="unit">W</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Price</div>
+          <div class="value" id="live-price">--</div>
+          <div class="unit">€/kWh</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Uptime</div>
+          <div class="value" id="live-uptime">--</div>
+          <div class="unit">hours</div>
+        </div>
       </div>
     </div>
-
-    <!-- History -->
-    <div class="card mt-6">
-      <h2 class="text-xl font-semibold mb-4">📈 Histórico (7 días)</h2>
-      <div id="history-container">
-        <p class="text-gray-500 text-center">Cargando...</p>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="text-center mt-8 text-sm text-gray-400">
-      <p>VoltAssistant v1.0 | Actualización cada 30 segundos</p>
-      <p class="mt-1">
-        <a href="/health" class="text-blue-500 hover:underline">API Health</a> |
-        <a href="/dashboard" class="text-blue-500 hover:underline">JSON</a> |
-        <a href="/history" class="text-blue-500 hover:underline">History</a>
+  </section>
+  
+  <footer>
+    <div class="container">
+      <p>VoltAssistant v1.0.0 · Made with ⚡ for solar enthusiasts</p>
+      <p style="margin-top:8px;">
+        <a href="https://github.com/arturonaredo/ha-addons">GitHub</a> · 
+        <a href="/health">API Health</a> · 
+        <a href="/metrics">Prometheus Metrics</a>
       </p>
     </div>
-  </div>
-
+  </footer>
+  
   <script>
-    async function updateDashboard() {
+    function toggleAccordion(header) {
+      const item = header.parentElement;
+      item.classList.toggle('open');
+    }
+    
+    async function checkStatus() {
       try {
-        const response = await fetch('/dashboard');
-        const data = await response.json();
-        
-        if (!data.success) throw new Error(data.error);
-        
-        const { realtime, plan, prices, solar } = data;
-        
-        // Timestamp
-        document.getElementById('timestamp').textContent = 
-          `Última actualización: ${new Date(data.timestamp).toLocaleTimeString('es-ES')}`;
-        
-        // Battery
-        document.getElementById('battery-soc').textContent = `${realtime.battery.soc}%`;
-        document.getElementById('battery-state').textContent = 
-          realtime.battery.state === 'charging' ? '⬆️ Cargando' :
-          realtime.battery.state === 'discharging' ? '⬇️ Descargando' : '➡️ Idle';
-        document.getElementById('battery-kwh').textContent = `${realtime.battery.kwh} kWh`;
-        document.getElementById('battery-capacity').textContent = `/ ${realtime.battery.capacity} kWh`;
-        document.getElementById('battery-power').textContent = `${realtime.battery.power} W`;
-        
-        const batteryBar = document.getElementById('battery-bar');
-        batteryBar.style.width = `${realtime.battery.soc}%`;
-        batteryBar.className = `h-6 rounded-full transition-all duration-500 ${
-          realtime.battery.soc < 20 ? 'bg-red-500' :
-          realtime.battery.soc < 50 ? 'bg-yellow-500' : 'bg-green-500'
-        }`;
-        
-        // Solar
-        document.getElementById('solar-power').textContent = `${(realtime.solar.totalPower / 1000).toFixed(1)} kW`;
-        document.getElementById('solar-today').textContent = `Hoy: ${realtime.solar.todayKwh} kWh`;
-        
-        // Grid
-        const gridPower = realtime.grid.power;
-        document.getElementById('grid-power').textContent = `${Math.abs(gridPower)} W`;
-        document.getElementById('grid-power').className = `stat-value ${gridPower > 0 ? 'text-red-500' : 'text-green-500'}`;
-        document.getElementById('grid-flow').textContent = gridPower > 0 ? '⬅️ Importando' : '➡️ Exportando';
-        document.getElementById('grid-flow').className = `text-xs mt-1 ${gridPower > 0 ? 'text-red-500' : 'text-green-500'}`;
-        
-        // Load
-        document.getElementById('load-power').textContent = `${realtime.load.power} W`;
-        document.getElementById('load-today').textContent = `Hoy: ${realtime.load.todayKwh} kWh`;
-        
-        // Temperature
-        document.getElementById('inverter-temp').textContent = `${realtime.temperature.inverter}°C`;
-        
-        // Current Action
-        const actionMap = {
-          'charge_from_grid': '🔌 Carga Red',
-          'charge_from_solar': '☀️ Carga Solar',
-          'discharge': '🔋 Descarga',
-          'idle': '⏸️ Espera'
-        };
-        document.getElementById('current-action').textContent = actionMap[plan.currentAction] || plan.currentAction;
-        
-        // Recommendations
-        const recList = document.getElementById('recommendations');
-        recList.innerHTML = plan.recommendations.map(r => `<li>${r}</li>`).join('');
-        
-        // Prices
-        document.getElementById('current-price').textContent = (prices.current * 100).toFixed(2) + '¢';
-        document.getElementById('avg-price').textContent = (prices.average * 100).toFixed(2) + '¢/kWh';
-        document.getElementById('savings').textContent = `€${plan.estimatedSavings.toFixed(2)}`;
-        
-        // Hours
-        document.getElementById('cheap-hours').textContent = prices.cheapestHours.map(h => `${h}:00`).join(', ');
-        document.getElementById('expensive-hours').textContent = prices.expensiveHours.map(h => `${h}:00`).join(', ');
-        document.getElementById('charge-hours').textContent = plan.gridChargeHours.map(h => `${h}:00`).join(', ') || 'Ninguna';
-        
-        // Solar Forecast
-        document.getElementById('solar-forecast').textContent = (solar.forecast / 1000).toFixed(1);
-        document.getElementById('solar-peak').textContent = `${solar.peak.watts} W`;
-        document.getElementById('solar-peak').nextElementSibling.textContent = `Pico a las ${solar.peak.hour}:00`;
-        
-        // Health
-        const banner = document.getElementById('health-banner');
-        if (realtime.health.issues.length > 0) {
-          banner.className = `mb-6 rounded-xl p-4 ${
-            realtime.health.status === 'error' ? 'bg-red-100 border border-red-300' : 'bg-yellow-100 border border-yellow-300'
-          }`;
-          banner.innerHTML = `<strong>⚠️ Alertas:</strong> ${realtime.health.issues.join(' | ')}`;
-          banner.classList.remove('hidden');
-        } else {
-          banner.classList.add('hidden');
+        const res = await fetch('/health');
+        if (res.ok) {
+          document.getElementById('server-status').textContent = 'API Online · v1.0.0';
+          document.querySelector('.status-dot').style.background = 'var(--accent)';
         }
-        
-      } catch (error) {
-        console.error('Error updating dashboard:', error);
+      } catch (e) {
+        document.getElementById('server-status').textContent = 'API Offline';
+        document.querySelector('.status-dot').style.background = 'var(--danger)';
       }
     }
     
-    // Render price chart
-    async function renderPriceChart() {
+    async function updateLiveStatus() {
       try {
-        const response = await fetch('/prices');
-        const data = await response.json();
+        const res = await fetch('/status');
+        if (!res.ok) return;
+        const data = await res.json();
         
-        if (!data.success) return;
-        
-        const chartContainer = document.getElementById('price-chart');
-        const maxPrice = Math.max(...data.prices.map(p => p.price));
-        const minPrice = Math.min(...data.prices.map(p => p.price));
-        const currentHour = new Date().getHours();
-        
-        chartContainer.innerHTML = data.prices.map((p, i) => {
-          const height = ((p.price - minPrice) / (maxPrice - minPrice) * 80) + 20;
-          const isCheap = data.cheapestHours.includes(p.hour);
-          const isExpensive = data.expensiveHours.includes(p.hour);
-          const isCurrent = p.hour === currentHour;
-          
-          let color = 'bg-blue-400';
-          if (isCheap) color = 'bg-green-400';
-          if (isExpensive) color = 'bg-red-400';
-          if (isCurrent) color = 'bg-yellow-500 ring-2 ring-yellow-300';
-          
-          return `
-            <div class="flex-1 flex flex-col items-center group relative">
-              <div class="absolute -top-8 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
-                ${p.hour}:00 - ${(p.price * 100).toFixed(2)}¢
-              </div>
-              <div class="${color} rounded-t w-full transition-all hover:opacity-80" 
-                   style="height: ${height}%"></div>
-            </div>
-          `;
-        }).join('');
-      } catch (error) {
-        console.error('Error rendering price chart:', error);
+        if (data.battery) {
+          document.getElementById('live-soc').textContent = data.battery.soc?.toFixed(0) || '--';
+        }
+        if (data.solar) {
+          document.getElementById('live-pv').textContent = data.solar.power?.toFixed(0) || '--';
+        }
+        if (data.grid) {
+          document.getElementById('live-grid').textContent = Math.abs(data.grid.power || 0).toFixed(0);
+        }
+        if (data.load) {
+          document.getElementById('live-load').textContent = data.load.power?.toFixed(0) || '--';
+        }
+      } catch (e) {
+        console.log('Status fetch failed');
       }
-    }
-
-    // Load and render history
-    async function loadHistory() {
+      
       try {
-        const response = await fetch('/history?days=7');
-        const data = await response.json();
-        
-        if (!data.success) return;
-        
-        const container = document.getElementById('history-container');
-        
-        container.innerHTML = `
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-gray-500 border-b">
-                  <th class="pb-2">Fecha</th>
-                  <th class="pb-2">Precio Medio</th>
-                  <th class="pb-2">Min/Max</th>
-                  <th class="pb-2">Solar</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${data.days.map(day => `
-                  <tr class="border-b border-gray-100">
-                    <td class="py-2">${formatDate(day.date)}</td>
-                    <td class="py-2">${(day.prices.average * 100).toFixed(2)}¢</td>
-                    <td class="py-2 text-xs">
-                      <span class="text-green-600">${(day.prices.min * 100).toFixed(1)}¢</span>
-                      /
-                      <span class="text-red-600">${(day.prices.max * 100).toFixed(1)}¢</span>
-                    </td>
-                    <td class="py-2">
-                      ${day.solar.totalKwh > 0 ? `${day.solar.totalKwh} kWh ☀️` : '-'}
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        `;
-      } catch (error) {
-        console.error('Error loading history:', error);
-      }
+        const priceRes = await fetch('/prices');
+        if (priceRes.ok) {
+          const priceData = await priceRes.json();
+          const hour = new Date().getHours();
+          const currentPrice = priceData.prices?.find(p => p.hour === hour);
+          if (currentPrice) {
+            document.getElementById('live-price').textContent = currentPrice.price.toFixed(3);
+          }
+        }
+      } catch (e) {}
+      
+      try {
+        const metricsRes = await fetch('/metrics');
+        if (metricsRes.ok) {
+          const text = await metricsRes.text();
+          const match = text.match(/nodejs_process_uptime_seconds (\d+)/);
+          if (match) {
+            const hours = Math.floor(parseInt(match[1]) / 3600);
+            document.getElementById('live-uptime').textContent = hours;
+          }
+        }
+      } catch (e) {}
     }
-
-    function formatDate(dateStr) {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
-    }
-
-    // Initial load
-    updateDashboard();
-    renderPriceChart();
-    loadHistory();
     
-    // Auto-refresh every 30 seconds
-    setInterval(updateDashboard, 30000);
-    setInterval(renderPriceChart, 60000);
+    checkStatus();
+    updateLiveStatus();
+    setInterval(updateLiveStatus, 10000);
   </script>
 </body>
 </html>
