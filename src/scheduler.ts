@@ -6,7 +6,7 @@
 
 import { getPVPCPrices, PVPCDay } from './pvpc'
 import { getSolarForecast, SolarDay } from './solar'
-import { getBatteryStatus, applyControlDecision, checkConnection, testConnection, ControlDecision, getCurrentSettings } from './ha-integration'
+import { getBatteryStatus, applyControlDecision, checkConnection, testConnection, ControlDecision, getCurrentTargetSOC, getCurrentSettings } from './ha-integration'
 import { makeFullDecision, makeSimpleDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision, SimpleControlDecision } from './decision-engine'
 import { saveDecision, updateDecisionExecution, getLastDecision, saveHourlyStat, Decision } from './storage'
 import { loadConfig, SchedulerConfig, getLoadsConfig } from './config'
@@ -162,11 +162,9 @@ async function tick(): Promise<void> {
     console.log(`   Reason: ${controlDecision.reason}`)
     console.log(`${'─'.repeat(50)}`)
     
-    // Check current settings from HA
-    const currentSettings = await getCurrentSettings()
-    const settingsChanged = !currentSettings || 
-      
-      currentSettings.targetSoc !== controlDecision.targetSoc
+    // Check current target SOC from HA
+    const currentTargetSOC = await getCurrentTargetSOC()
+    const settingsChanged = currentTargetSOC === null || currentTargetSOC !== controlDecision.targetSoc
     
     // Save decision to database (using legacy action mapping for compatibility)
     const legacyAction = controlDecision.targetSoc > 0 ? 'charge_from_grid' : 'idle'
@@ -187,7 +185,6 @@ async function tick(): Promise<void> {
     if (shouldExecute) {
       console.log(`\n⚡ Applying control to inverter...`)
       const success = await applyControlDecision({
-        
         targetSoc: controlDecision.targetSoc,
         reason: controlDecision.reason,
       })
