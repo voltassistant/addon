@@ -1,10 +1,12 @@
 /**
  * Intelligent Decision Engine for VoltAssistant
  * Evaluates current conditions and determines optimal battery action
+ * Now includes load management decisions
  */
 
 import { PVPCDay } from './pvpc'
 import { SolarDay } from './solar'
+import { LoadEvaluationContext, LoadEvaluationResult, evaluateLoads } from './load-manager'
 
 export type BatteryAction = 'charge_from_grid' | 'charge_from_solar' | 'discharge' | 'idle'
 
@@ -40,6 +42,7 @@ export interface DecisionResult {
   confidence: number           // 0-1, how confident in this decision
   factors: DecisionFactor[]    // Contributing factors
   nextReviewHour?: number      // When to re-evaluate (if significant change expected)
+  pricePercentile: number      // Current price percentile (for load manager)
 }
 
 export interface DecisionFactor {
@@ -63,7 +66,7 @@ export const DEFAULT_THRESHOLDS: DecisionThresholds = {
 /**
  * Calculate price percentile for current hour
  */
-function calculatePricePercentile(currentPrice: number, prices: PVPCDay): number {
+export function calculatePricePercentile(currentPrice: number, prices: PVPCDay): number {
   const allPrices = prices.prices.map(p => p.price).sort((a, b) => a - b)
   const index = allPrices.findIndex(p => p >= currentPrice)
   if (index === -1) return 100
@@ -165,6 +168,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
       confidence: 1.0,
       factors,
       nextReviewHour: undefined, // Keep charging until safe
+      pricePercentile,
     }
   }
   
@@ -180,6 +184,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
         confidence: 0.95,
         factors,
         nextReviewHour: solarDay.forecasts.find(f => f.hour > currentHour && f.watts < thresholds.min_solar_watts_for_charge)?.hour,
+        pricePercentile,
       }
     }
     
@@ -190,6 +195,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
         reason: `☀️ Solar cubre consumo: ${currentSolarWatts}W vs ${currentLoadWatts}W demanda`,
         confidence: 0.85,
         factors,
+        pricePercentile,
       }
     }
   }
@@ -209,6 +215,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
         confidence: 0.9,
         factors,
         nextReviewHour: pricesDay.prices.find(p => p.hour > currentHour && p.price > highPriceThreshold)?.hour,
+        pricePercentile,
       }
     } else {
       // Wait for even cheaper hours, but don't risk running low
@@ -237,6 +244,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
         confidence: 0.85,
         factors,
         nextReviewHour: pricesDay.prices.find(p => p.hour > currentHour && p.price < lowPriceThreshold)?.hour,
+        pricePercentile,
       }
     }
   }
@@ -250,6 +258,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
         confidence: 0.75,
         factors,
         nextReviewHour: 7, // Review when solar might start
+        pricePercentile,
       }
     }
   }
@@ -285,6 +294,7 @@ export function makeDecision(context: DecisionContext): DecisionResult {
       ...upcomingCheapHours.slice(0, 1),
       currentHour + 1
     ),
+    pricePercentile,
   }
 }
 
@@ -319,6 +329,35 @@ export function quickDecision(
   }
   
   return 'idle'
+}
+
+/**
+ * Evaluate both battery decision and load management
+ * Returns battery decision + load actions to execute
+ */
+export async function makeFullDecision(context: DecisionContext): Promise<{
+  batteryDecision: DecisionResult
+  loadActions: LoadEvaluationResult[]
+}> {
+  // Make battery decision
+  const batteryDecision = makeDecision(context)
+  
+  // Prepare load evaluation context
+  const loadContext: LoadEvaluationContext = {
+    soc: context.currentSoc,
+    price: context.currentPrice,
+    pricePercentile: batteryDecision.pricePercentile,
+    solarPower: context.currentSolarWatts,
+    loadPower: context.currentLoadWatts,
+  }
+  
+  // Evaluate loads
+  const loadActions = await evaluateLoads(loadContext)
+  
+  return {
+    batteryDecision,
+    loadActions,
+  }
 }
 
 /**

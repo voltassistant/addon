@@ -1,6 +1,6 @@
 /**
  * SQLite Storage for VoltAssistant
- * Persists decisions, stats, alerts, and configuration
+ * Persists decisions, stats, alerts, configuration, and load management state
  */
 
 import Database from 'better-sqlite3'
@@ -44,6 +44,28 @@ export interface StoredAlert {
 export interface ConfigEntry {
   key: string
   value: string
+  updated_at: string
+}
+
+// Load Management Types
+export interface LoadAction {
+  id?: number
+  timestamp: string
+  device_id: string
+  device_name: string
+  action: 'shed' | 'restore'
+  reason: string
+  soc: number
+  price: number
+  solar_watts?: number
+  load_watts?: number
+}
+
+export interface LoadState {
+  device_id: string
+  is_shed: boolean
+  shed_since: string | null
+  shed_reason: string | null
   updated_at: string
 }
 
@@ -132,12 +154,42 @@ function initializeSchema(): void {
     )
   `)
 
+  // Load Actions table - history of shed/restore actions
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS load_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      soc REAL,
+      price REAL,
+      solar_watts REAL,
+      load_watts REAL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // Load State table - current state of each load
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS load_state (
+      device_id TEXT PRIMARY KEY,
+      is_shed INTEGER DEFAULT 0,
+      shed_since TEXT,
+      shed_reason TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `)
+
   // Indexes for performance
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_decisions_timestamp ON decisions(timestamp);
     CREATE INDEX IF NOT EXISTS idx_hourly_stats_date ON hourly_stats(date);
     CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at);
     CREATE INDEX IF NOT EXISTS idx_alerts_ack ON alerts(acknowledged);
+    CREATE INDEX IF NOT EXISTS idx_load_actions_timestamp ON load_actions(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_load_actions_device ON load_actions(device_id);
   `)
 
   console.log('📦 SQLite database initialized')
@@ -377,6 +429,196 @@ export function deleteConfigValue(key: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LOAD ACTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function saveLoadAction(action: Omit<LoadAction, 'id'>): number {
+  const database = getDb()
+  const stmt = database.prepare(`
+    INSERT INTO load_actions (timestamp, device_id, device_name, action, reason, soc, price, solar_watts, load_watts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  const result = stmt.run(
+    action.timestamp,
+    action.device_id,
+    action.device_name,
+    action.action,
+    action.reason,
+    action.soc,
+    action.price,
+    action.solar_watts || null,
+    action.load_watts || null
+  )
+  return result.lastInsertRowid as number
+}
+
+export function getLoadActionHistory(limit: number = 100): LoadAction[] {
+  const database = getDb()
+  const stmt = database.prepare(`
+    SELECT * FROM load_actions ORDER BY timestamp DESC LIMIT ?
+  `)
+  return stmt.all(limit) as LoadAction[]
+}
+
+export function getLoadActionsByDevice(deviceId: string, limit: number = 50): LoadAction[] {
+  const database = getDb()
+  const stmt = database.prepare(`
+    SELECT * FROM load_actions WHERE device_id = ? ORDER BY timestamp DESC LIMIT ?
+  `)
+  return stmt.all(deviceId, limit) as LoadAction[]
+}
+
+export function getLoadActionsByDateRange(start: string, end: string): LoadAction[] {
+  const database = getDb()
+  const stmt = database.prepare(`
+    SELECT * FROM load_actions 
+    WHERE timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp DESC
+  `)
+  return stmt.all(start, end) as LoadAction[]
+}
+
+export function getLoadActionStats(days: number = 7): {
+  total_sheds: number
+  total_restores: number
+  by_device: { device_id: string; device_name: string; sheds: number; restores: number }[]
+} {
+  const database = getDb()
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString()
+
+  const totalStmt = database.prepare(`
+    SELECT 
+      SUM(CASE WHEN action = 'shed' THEN 1 ELSE 0 END) as total_sheds,
+      SUM(CASE WHEN action = 'restore' THEN 1 ELSE 0 END) as total_restores
+    FROM load_actions WHERE timestamp >= ?
+  `)
+  const totals = totalStmt.get(cutoffStr) as any
+
+  const byDeviceStmt = database.prepare(`
+    SELECT 
+      device_id,
+      device_name,
+      SUM(CASE WHEN action = 'shed' THEN 1 ELSE 0 END) as sheds,
+      SUM(CASE WHEN action = 'restore' THEN 1 ELSE 0 END) as restores
+    FROM load_actions 
+    WHERE timestamp >= ?
+    GROUP BY device_id, device_name
+  `)
+  const byDevice = byDeviceStmt.all(cutoffStr) as any[]
+
+  return {
+    total_sheds: totals?.total_sheds || 0,
+    total_restores: totals?.total_restores || 0,
+    by_device: byDevice,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOAD STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function getLoadState(deviceId: string): LoadState | null {
+  const database = getDb()
+  const stmt = database.prepare(`SELECT * FROM load_state WHERE device_id = ?`)
+  const row = stmt.get(deviceId) as any
+  if (!row) return null
+  return {
+    device_id: row.device_id,
+    is_shed: Boolean(row.is_shed),
+    shed_since: row.shed_since,
+    shed_reason: row.shed_reason,
+    updated_at: row.updated_at,
+  }
+}
+
+export function getAllLoadStates(): LoadState[] {
+  const database = getDb()
+  const stmt = database.prepare(`SELECT * FROM load_state`)
+  const rows = stmt.all() as any[]
+  return rows.map(row => ({
+    device_id: row.device_id,
+    is_shed: Boolean(row.is_shed),
+    shed_since: row.shed_since,
+    shed_reason: row.shed_reason,
+    updated_at: row.updated_at,
+  }))
+}
+
+export function setLoadState(state: LoadState): void {
+  const database = getDb()
+  const stmt = database.prepare(`
+    INSERT OR REPLACE INTO load_state (device_id, is_shed, shed_since, shed_reason, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `)
+  stmt.run(
+    state.device_id,
+    state.is_shed ? 1 : 0,
+    state.shed_since,
+    state.shed_reason,
+    state.updated_at
+  )
+}
+
+export function markLoadShed(deviceId: string, reason: string): void {
+  const now = new Date().toISOString()
+  setLoadState({
+    device_id: deviceId,
+    is_shed: true,
+    shed_since: now,
+    shed_reason: reason,
+    updated_at: now,
+  })
+}
+
+export function markLoadRestored(deviceId: string): void {
+  const now = new Date().toISOString()
+  setLoadState({
+    device_id: deviceId,
+    is_shed: false,
+    shed_since: null,
+    shed_reason: null,
+    updated_at: now,
+  })
+}
+
+export function getShedLoads(): LoadState[] {
+  const database = getDb()
+  const stmt = database.prepare(`SELECT * FROM load_state WHERE is_shed = 1`)
+  const rows = stmt.all() as any[]
+  return rows.map(row => ({
+    device_id: row.device_id,
+    is_shed: true,
+    shed_since: row.shed_since,
+    shed_reason: row.shed_reason,
+    updated_at: row.updated_at,
+  }))
+}
+
+export function getLoadShedDuration(deviceId: string): number | null {
+  const state = getLoadState(deviceId)
+  if (!state || !state.is_shed || !state.shed_since) return null
+  const shedTime = new Date(state.shed_since).getTime()
+  const now = Date.now()
+  return Math.floor((now - shedTime) / 1000 / 60) // minutes
+}
+
+export function clearLoadState(deviceId: string): boolean {
+  const database = getDb()
+  const stmt = database.prepare(`DELETE FROM load_state WHERE device_id = ?`)
+  const result = stmt.run(deviceId)
+  return result.changes > 0
+}
+
+export function clearAllLoadStates(): number {
+  const database = getDb()
+  const stmt = database.prepare(`DELETE FROM load_state`)
+  const result = stmt.run()
+  return result.changes
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CLEANUP & MAINTENANCE
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -384,6 +626,7 @@ export function cleanupOldData(daysToKeep: number = 90): {
   deletedDecisions: number
   deletedStats: number
   deletedAlerts: number
+  deletedLoadActions: number
 } {
   const database = getDb()
   const cutoffDate = new Date()
@@ -399,6 +642,9 @@ export function cleanupOldData(daysToKeep: number = 90): {
   const deleteAlerts = database.prepare(`
     DELETE FROM alerts WHERE created_at < ? AND acknowledged = 1
   `)
+  const deleteLoadActions = database.prepare(`
+    DELETE FROM load_actions WHERE timestamp < ?
+  `)
 
   const cutoffDateStr = cutoff.split('T')[0]
 
@@ -406,6 +652,7 @@ export function cleanupOldData(daysToKeep: number = 90): {
     deletedDecisions: deleteDecisions.run(cutoff).changes,
     deletedStats: deleteStats.run(cutoffDateStr).changes,
     deletedAlerts: deleteAlerts.run(cutoff).changes,
+    deletedLoadActions: deleteLoadActions.run(cutoff).changes,
   }
 }
 
@@ -414,6 +661,8 @@ export function getDatabaseStats(): {
   hourlyStats: number
   alerts: number
   activeAlerts: number
+  loadActions: number
+  shedLoads: number
   sizeBytes: number
 } {
   const database = getDb()
@@ -422,6 +671,8 @@ export function getDatabaseStats(): {
   const statsCount = (database.prepare(`SELECT COUNT(*) as c FROM hourly_stats`).get() as any).c
   const alertsCount = (database.prepare(`SELECT COUNT(*) as c FROM alerts`).get() as any).c
   const activeAlertsCount = (database.prepare(`SELECT COUNT(*) as c FROM alerts WHERE acknowledged = 0`).get() as any).c
+  const loadActionsCount = (database.prepare(`SELECT COUNT(*) as c FROM load_actions`).get() as any).c
+  const shedLoadsCount = (database.prepare(`SELECT COUNT(*) as c FROM load_state WHERE is_shed = 1`).get() as any).c
 
   const dbPath = getDbPath()
   const stats = fs.statSync(dbPath)
@@ -431,6 +682,8 @@ export function getDatabaseStats(): {
     hourlyStats: statsCount,
     alerts: alertsCount,
     activeAlerts: activeAlertsCount,
+    loadActions: loadActionsCount,
+    shedLoads: shedLoadsCount,
     sizeBytes: stats.size,
   }
 }

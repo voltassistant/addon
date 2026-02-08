@@ -25,6 +25,7 @@ import {
   getLoadManagerState, updateState as updateLoadState,
   balanceLoads, addLoad, removeLoad, updateLoad,
   forceRestoreAll, setEnabled as setLoadManagerEnabled,
+  shedLoad, restoreLoad, getLoadHistory, getLoadStatus,
 } from './load-manager'
 import {
   start as startScheduler,
@@ -45,6 +46,9 @@ import {
   getDatabaseStats,
   cleanupOldData,
   getDb,
+  getLoadActionHistory,
+  getLoadActionStats,
+  getShedLoads,
 } from './storage'
 import {
   loadConfig as loadAppConfig,
@@ -52,6 +56,7 @@ import {
   resetConfig as resetAppConfig,
   validateConfig,
   getSchedulerConfig,
+  getLoadsConfig,
 } from './config'
 import dotenv from 'dotenv'
 
@@ -69,6 +74,7 @@ interface RequestBody {
   id?: string
   enabled?: boolean | string
   limit?: number
+  reason?: string
   // Config fields
   [key: string]: unknown
 }
@@ -129,6 +135,7 @@ let requestCounts = {
   control: 0,
   scheduler: 0,
   decisions: 0,
+  loads: 0,
 }
 
 // Routes
@@ -139,6 +146,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     const schedulerState = getSchedulerState()
     const schedulerStats = getSchedulerStats()
     const dbStats = getDatabaseStats()
+    const loadsConfig = getLoadsConfig()
     
     const lines = [
       '# HELP voltassistant_up Service status (1 = up)',
@@ -175,6 +183,19 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       '# TYPE voltassistant_active_alerts gauge',
       `voltassistant_active_alerts ${dbStats.activeAlerts}`,
       '',
+      '# HELP voltassistant_load_manager_enabled Load manager enabled status',
+      '# TYPE voltassistant_load_manager_enabled gauge',
+      `voltassistant_load_manager_enabled ${loadsConfig.enabled ? 1 : 0}`,
+      '',
+      '# HELP voltassistant_loads_shed Currently shed loads count',
+      '# TYPE voltassistant_loads_shed gauge',
+      `voltassistant_loads_shed ${dbStats.shedLoads}`,
+      '',
+      '# HELP voltassistant_load_actions_total Load shed/restore actions',
+      '# TYPE voltassistant_load_actions_total counter',
+      `voltassistant_load_actions_total{action="shed"} ${schedulerStats.loadActionCounts.sheds}`,
+      `voltassistant_load_actions_total{action="restore"} ${schedulerStats.loadActionCounts.restores}`,
+      '',
       '# HELP nodejs_process_uptime_seconds Process uptime',
       '# TYPE nodejs_process_uptime_seconds gauge',
       `nodejs_process_uptime_seconds ${Math.floor(process.uptime())}`,
@@ -192,13 +213,18 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
   // Health check
   'GET /health': async (req, res) => {
     const schedulerState = getSchedulerState()
+    const loadsConfig = getLoadsConfig()
     sendJSON(res, 200, { 
       status: 'ok', 
-      version: '2.0.0', 
+      version: '2.1.0', 
       timestamp: new Date().toISOString(),
       scheduler: {
         running: schedulerState.isRunning,
         paused: schedulerState.isPaused,
+      },
+      loadManager: {
+        enabled: loadsConfig.enabled,
+        devices: loadsConfig.devices.length,
       }
     })
   },
@@ -442,6 +468,261 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // LOAD MANAGER ROUTES (New integrated endpoints)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // GET /loads - Get current state of all loads
+  'GET /loads': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const state = await getLoadManagerState()
+      sendJSON(res, 200, {
+        success: true,
+        enabled: state.enabled,
+        totalLoads: state.totalConfiguredLoads,
+        shedCount: state.shedLoads.length,
+        activeCount: state.activeLoads.length,
+        maxInverterPower: state.maxInverterPower,
+        safetyMarginPercent: state.safetyMarginPercent,
+        loads: state.allLoads,
+        shedLoads: state.shedLoads,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // POST /loads/:id/shed - Force shed a specific load
+  'POST /loads/shed': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { success: false, error: 'Missing device id' })
+        return
+      }
+      
+      const reason = (body.reason as string) || 'Desconexión manual forzada'
+      const success = await shedLoad(body.id as string, reason, { soc: 50, price: 0.1 })
+      
+      sendJSON(res, 200, {
+        success,
+        message: success ? `Carga ${body.id} desconectada` : 'Error al desconectar carga',
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // POST /loads/:id/restore - Force restore a specific load
+  'POST /loads/restore': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      
+      // If no ID, restore all
+      if (!body.id) {
+        const restored = await forceRestoreAll({ soc: 50, price: 0.1 })
+        sendJSON(res, 200, {
+          success: true,
+          message: 'Todas las cargas restauradas',
+          restored,
+        })
+        return
+      }
+      
+      const reason = (body.reason as string) || 'Reconexión manual forzada'
+      const success = await restoreLoad(body.id as string, reason, { soc: 50, price: 0.1 })
+      
+      sendJSON(res, 200, {
+        success,
+        message: success ? `Carga ${body.id} restaurada` : 'Error al restaurar carga (puede que aún no haya pasado min_off_minutes)',
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // GET /loads/history - Get load action history
+  'GET /loads/history': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+      const limit = parseInt(url.searchParams.get('limit') || '100', 10)
+      
+      const history = getLoadActionHistory(Math.min(limit, 500))
+      const stats = getLoadActionStats(7)
+      
+      sendJSON(res, 200, {
+        success: true,
+        count: history.length,
+        stats,
+        history,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXISTING LOAD MANAGER ROUTES (Legacy compatibility)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get load manager status
+  'GET /loads/status': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const state = await updateLoadState()
+      sendJSON(res, 200, {
+        success: true,
+        ...state,
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Get load manager config
+  'GET /loads/config': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const config = getLoadManagerConfig()
+      sendJSON(res, 200, { success: true, config })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Update load manager config
+  'POST /loads/config': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      const config = setLoadManagerConfig(body as any)
+      sendJSON(res, 200, { success: true, config })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Add a load
+  'POST /loads/add': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      if (!body.id || !body.name || !body.entity_id || !body.priority) {
+        sendJSON(res, 400, { success: false, error: 'Missing required fields: id, name, entity_id, priority' })
+        return
+      }
+      const load = addLoad(body as any)
+      sendJSON(res, 200, { success: true, load })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Update a load
+  'PUT /loads': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { success: false, error: 'Missing load id' })
+        return
+      }
+      const load = updateLoad(body.id as string, body as any)
+      if (!load) {
+        sendJSON(res, 404, { success: false, error: 'Load not found' })
+        return
+      }
+      sendJSON(res, 200, { success: true, load })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Delete a load
+  'DELETE /loads': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      if (!body.id) {
+        sendJSON(res, 400, { success: false, error: 'Missing load id' })
+        return
+      }
+      const removed = removeLoad(body.id as string)
+      sendJSON(res, 200, { success: true, removed })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Run balance check (manual trigger)
+  'POST /loads/balance': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const result = await balanceLoads()
+      const state = await getLoadManagerState()
+      sendJSON(res, 200, {
+        success: true,
+        ...result,
+        state: {
+          enabled: state.enabled,
+          totalLoads: state.totalConfiguredLoads,
+          shedLoads: state.shedLoads.map(l => l.id),
+        },
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Force restore all shed loads
+  'POST /loads/restore-all': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const restored = await forceRestoreAll()
+      sendJSON(res, 200, { success: true, restored })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Enable/disable load manager
+  'POST /loads/enable': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const body = await parseBody(req)
+      const enabled = body.enabled === true || body.enabled === 'true'
+      setLoadManagerEnabled(enabled)
+      sendJSON(res, 200, { success: true, enabled })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
+  // Webhook for HA automation to trigger balance
+  'POST /webhook/loads': async (req, res) => {
+    requestCounts.loads++
+    try {
+      const result = await balanceLoads()
+      const state = await getLoadManagerState()
+      
+      // Return HA-friendly format
+      sendJSON(res, 200, {
+        balanced: true,
+        actions_taken: result.actions.length,
+        actions: result.actions,
+        loads_affected: result.loadsAffected,
+        is_enabled: state.enabled,
+        shed_loads: state.shedLoads.map(l => ({ id: l.id, name: l.name, since: l.shed_since })),
+      })
+    } catch (error) {
+      sendJSON(res, 500, { error: (error as Error).message })
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // EXISTING ROUTES (unchanged)
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -579,8 +860,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const currentAction = plan.hourlyPlan[currentHour]?.decision.action || 'idle'
       const nextChargeHour = plan.gridChargeHours.find(h => h > currentHour) || null
       
-      // Include scheduler status
+      // Include scheduler and load manager status
       const schedulerState = getSchedulerState()
+      const loadState = await getLoadManagerState()
       
       // Return HA-friendly format
       sendJSON(res, 200, {
@@ -599,6 +881,11 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
           running: schedulerState.isRunning,
           last_action: schedulerState.lastAction,
           last_run: schedulerState.lastRun,
+        },
+        loads: {
+          enabled: loadState.enabled,
+          shed_count: loadState.shedLoads.length,
+          shed_loads: loadState.shedLoads.map(l => l.id),
         }
       })
     } catch (error) {
@@ -717,8 +1004,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const currentHour = new Date().getHours()
       const currentAction = plan.hourlyPlan[currentHour]?.decision.action || 'idle'
       
-      // Add scheduler info
+      // Add scheduler and load info
       const schedulerState = getSchedulerState()
+      const loadState = await getLoadManagerState()
       
       sendJSON(res, 200, {
         success: true,
@@ -746,6 +1034,13 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
           lastAction: schedulerState.lastAction,
           lastRun: schedulerState.lastRun,
           nextRun: schedulerState.nextRun,
+          lastLoadActions: schedulerState.lastLoadActions,
+        },
+        loads: {
+          enabled: loadState.enabled,
+          totalLoads: loadState.totalConfiguredLoads,
+          shedCount: loadState.shedLoads.length,
+          shedLoads: loadState.shedLoads.map(l => ({ id: l.id, name: l.name, since: l.shed_since })),
         },
       })
     } catch (error) {
@@ -936,6 +1231,7 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
       const greeting = hour < 12 ? 'Buenos días' : hour < 20 ? 'Buenas tardes' : 'Buenas noches'
       
       const schedulerState = getSchedulerState()
+      const loadState = await getLoadManagerState()
       
       const lines = [
         `☀️ ${greeting}! Resumen energético:`,
@@ -954,6 +1250,9 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
         '',
         `🤖 Scheduler: ${schedulerState.isRunning ? (schedulerState.isPaused ? 'pausado' : 'activo') : 'detenido'}`,
         schedulerState.lastAction ? `   Última acción: ${schedulerState.lastAction}` : '',
+        '',
+        `🔌 Cargas: ${loadState.enabled ? 'gestión activa' : 'deshabilitado'}`,
+        loadState.shedLoads.length > 0 ? `   Desconectadas: ${loadState.shedLoads.map(l => l.name).join(', ')}` : '',
       ]
       
       // Add alerts if any
@@ -980,162 +1279,11 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
           savings: plan.savings,
           alerts: status.health.issues,
           scheduler: schedulerState,
+          loads: loadState,
         }
       })
     } catch (error) {
       sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LOAD MANAGER ROUTES
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Get load manager status
-  'GET /loads/status': async (req, res) => {
-    try {
-      const state = await updateLoadState()
-      sendJSON(res, 200, {
-        success: true,
-        ...state,
-      })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Get load manager config
-  'GET /loads/config': async (req, res) => {
-    try {
-      const config = getLoadManagerConfig()
-      sendJSON(res, 200, { success: true, config })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Update load manager config
-  'POST /loads/config': async (req, res) => {
-    try {
-      const body = await parseBody(req)
-      const config = setLoadManagerConfig(body as any)
-      sendJSON(res, 200, { success: true, config })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Add a load
-  'POST /loads': async (req, res) => {
-    try {
-      const body = await parseBody(req)
-      if (!body.id || !body.name || !body.entity_id || !body.priority) {
-        sendJSON(res, 400, { success: false, error: 'Missing required fields: id, name, entity_id, priority' })
-        return
-      }
-      const load = addLoad(body as any)
-      sendJSON(res, 200, { success: true, load })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Update a load
-  'PUT /loads': async (req, res) => {
-    try {
-      const body = await parseBody(req)
-      if (!body.id) {
-        sendJSON(res, 400, { success: false, error: 'Missing load id' })
-        return
-      }
-      const load = updateLoad(body.id as string, body as any)
-      if (!load) {
-        sendJSON(res, 404, { success: false, error: 'Load not found' })
-        return
-      }
-      sendJSON(res, 200, { success: true, load })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Delete a load
-  'DELETE /loads': async (req, res) => {
-    try {
-      const body = await parseBody(req)
-      if (!body.id) {
-        sendJSON(res, 400, { success: false, error: 'Missing load id' })
-        return
-      }
-      const removed = removeLoad(body.id as string)
-      sendJSON(res, 200, { success: true, removed })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Run balance check (manual trigger)
-  'POST /loads/balance': async (req, res) => {
-    try {
-      const result = await balanceLoads()
-      const state = getLoadManagerState()
-      sendJSON(res, 200, {
-        success: true,
-        ...result,
-        state: {
-          totalPower: state.totalPower,
-          maxAvailable: state.maxAvailable,
-          usagePercent: state.usagePercent,
-          isOverloaded: state.isOverloaded,
-          shedLoads: state.shedLoads,
-        },
-      })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Force restore all shed loads
-  'POST /loads/restore': async (req, res) => {
-    try {
-      const restored = await forceRestoreAll()
-      sendJSON(res, 200, { success: true, restored })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Enable/disable load manager
-  'POST /loads/enable': async (req, res) => {
-    try {
-      const body = await parseBody(req)
-      const enabled = body.enabled === true || body.enabled === 'true'
-      setLoadManagerEnabled(enabled)
-      sendJSON(res, 200, { success: true, enabled })
-    } catch (error) {
-      sendJSON(res, 500, { success: false, error: (error as Error).message })
-    }
-  },
-
-  // Webhook for HA automation to trigger balance
-  'POST /webhook/loads': async (req, res) => {
-    try {
-      const result = await balanceLoads()
-      const state = getLoadManagerState()
-      
-      // Return HA-friendly format
-      sendJSON(res, 200, {
-        balanced: true,
-        actions_taken: result.actions.length,
-        actions: result.actions,
-        total_power: state.totalPower,
-        max_available: state.maxAvailable,
-        is_overloaded: state.isOverloaded,
-        shed_loads: state.shedLoads,
-        last_action: state.lastAction,
-      })
-    } catch (error) {
-      sendJSON(res, 500, { error: (error as Error).message })
     }
   },
 }
@@ -1207,7 +1355,7 @@ export function startServer() {
   const server = http.createServer(handleRequest)
   
   server.listen(PORT, () => {
-    console.log(`⚡ VoltAssistant API Server v2.0`)
+    console.log(`⚡ VoltAssistant API Server v2.1`)
     console.log(`   Listening on http://0.0.0.0:${PORT}`)
     console.log(`   API Key: ${API_KEY ? 'enabled' : 'disabled'}`)
     console.log('')
@@ -1242,16 +1390,18 @@ export function startServer() {
     console.log('   GET  /db/stats     - Database statistics')
     console.log('')
     console.log('🔌 Load Manager:')
-    console.log('   GET  /loads/status  - Current load state')
-    console.log('   GET  /loads/config  - Get config')
-    console.log('   POST /loads/config  - Update config')
-    console.log('   POST /loads         - Add a load')
-    console.log('   PUT  /loads         - Update a load')
-    console.log('   DELETE /loads       - Remove a load')
-    console.log('   POST /loads/balance - Run balance check')
-    console.log('   POST /loads/restore - Force restore all')
-    console.log('   POST /loads/enable  - Enable/disable')
-    console.log('   POST /webhook/loads - HA webhook trigger')
+    console.log('   GET  /loads          - Current state of all loads')
+    console.log('   POST /loads/shed     - Force disconnect a load')
+    console.log('   POST /loads/restore  - Force reconnect a load')
+    console.log('   GET  /loads/history  - Load action history')
+    console.log('   GET  /loads/config   - Get load config')
+    console.log('   POST /loads/config   - Update load config')
+    console.log('   POST /loads/add      - Add a load device')
+    console.log('   PUT  /loads          - Update a load device')
+    console.log('   DELETE /loads        - Remove a load device')
+    console.log('   POST /loads/enable   - Enable/disable load manager')
+    console.log('   POST /loads/restore-all - Restore all shed loads')
+    console.log('   POST /webhook/loads  - HA webhook trigger')
     
     // Start scheduler if enabled
     const schedulerConfig = getSchedulerConfig()
@@ -1262,6 +1412,13 @@ export function startServer() {
     } else {
       console.log('')
       console.log('ℹ️ Scheduler deshabilitado en config')
+    }
+    
+    // Show load manager status
+    const loadsConfig = getLoadsConfig()
+    const deviceCount = loadsConfig.devices?.length || 0
+    if (loadsConfig.enabled) {
+      console.log(`🔌 Gestión de cargas ACTIVA (${deviceCount} dispositivos configurados)`)
     }
   })
   

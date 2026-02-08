@@ -41,5 +41,40 @@
       "selling_first": "selling_first",
       "zero_export": "zero_export"
     }
+  },
+  "loads": {
+    "enabled": true,
+    "check_interval_seconds": 30,
+    "max_inverter_power": 6000,
+    "safety_margin_percent": 10,
+    "devices": [
+      {
+        "id": "aire_salon",
+        "name": "Aire acondicionado salón",
+        "entity_id": "switch.aire_salon",
+        "power_watts": 1500,
+        "priority": "comfort",
+        "can_shed": true,
+        "min_off_minutes": 10
+      },
+      {
+        "id": "calentador",
+        "name": "Calentador de agua",
+        "entity_id": "switch.calentador_agua",
+        "power_watts": 2000,
+        "priority": "comfort",
+        "can_shed": true,
+        "min_off_minutes": 30
+      },
+      {
+        "id": "cargador_coche",
+        "name": "Cargador coche eléctrico",
+        "entity_id": "switch.cargador_coche",
+        "power_watts": 3600,
+        "priority": "accessory",
+        "can_shed": true,
+        "min_off_minutes": 5
+      }
+    ]
   }
 }

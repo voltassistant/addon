@@ -55,11 +55,33 @@ export interface HAConfig {
   }
 }
 
+// Load Management Types
+export type LoadPriority = 'critical' | 'comfort' | 'accessory'
+
+export interface LoadDevice {
+  id: string
+  name: string
+  entity_id: string
+  power_watts: number
+  priority: LoadPriority
+  can_shed: boolean
+  min_off_minutes: number
+}
+
+export interface LoadsConfig {
+  enabled: boolean
+  check_interval_seconds: number
+  max_inverter_power: number
+  safety_margin_percent: number
+  devices: LoadDevice[]
+}
+
 export interface AppConfig {
   scheduler: SchedulerConfig
   thresholds: ThresholdsConfig
   battery: BatteryConfig
   home_assistant: HAConfig
+  loads: LoadsConfig
 }
 
 // Default configuration
@@ -106,6 +128,13 @@ const DEFAULT_CONFIG: AppConfig = {
       selling_first: 'selling_first',
       zero_export: 'zero_export',
     },
+  },
+  loads: {
+    enabled: false,
+    check_interval_seconds: 30,
+    max_inverter_power: 6000,
+    safety_margin_percent: 10,
+    devices: [],
   },
 }
 
@@ -213,6 +242,24 @@ export function getThresholdsConfig(): ThresholdsConfig {
 }
 
 /**
+ * Get loads config
+ */
+export function getLoadsConfig(): LoadsConfig {
+  const config = loadConfig()
+  return config.loads
+}
+
+/**
+ * Update loads config
+ */
+export function updateLoadsConfig(updates: Partial<LoadsConfig>): LoadsConfig {
+  const current = loadConfig()
+  current.loads = { ...current.loads, ...updates }
+  saveConfig(current)
+  return current.loads
+}
+
+/**
  * Reload config from disk (clears cache)
  */
 export function reloadConfig(): AppConfig {
@@ -281,6 +328,23 @@ export function validateConfig(config: AppConfig): { valid: boolean; errors: str
   if (!sensors.solar_power) errors.push('Falta entity: sensors.solar_power')
   if (!controls.work_mode) errors.push('Falta entity: controls.work_mode')
   if (!controls.grid_charge) errors.push('Falta entity: controls.grid_charge')
+  
+  // Loads validation
+  if (config.loads.enabled) {
+    if (config.loads.max_inverter_power < 1000) {
+      errors.push('loads.max_inverter_power debe ser >= 1000')
+    }
+    if (config.loads.safety_margin_percent < 0 || config.loads.safety_margin_percent > 50) {
+      errors.push('loads.safety_margin_percent debe estar entre 0 y 50')
+    }
+    for (const device of config.loads.devices) {
+      if (!device.id) errors.push('Load device missing id')
+      if (!device.entity_id) errors.push(`Load ${device.id} missing entity_id`)
+      if (!['critical', 'comfort', 'accessory'].includes(device.priority)) {
+        errors.push(`Load ${device.id} has invalid priority: ${device.priority}`)
+      }
+    }
+  }
   
   return {
     valid: errors.length === 0,

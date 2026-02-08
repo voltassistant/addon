@@ -1,14 +1,16 @@
 /**
  * Autonomous Scheduler for VoltAssistant
- * Runs every N minutes to evaluate conditions and control the inverter
+ * Runs every N minutes to evaluate conditions, control the inverter,
+ * and manage loads automatically based on SOC, prices, and solar production.
  */
 
 import { getPVPCPrices, PVPCDay } from './pvpc'
 import { getSolarForecast, SolarDay } from './solar'
 import { getBatteryStatus, applyChargingAction, checkConnection, testConnection } from './ha-integration'
-import { makeDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision } from './decision-engine'
+import { makeFullDecision, DecisionThresholds, DEFAULT_THRESHOLDS, BatteryAction, explainDecision } from './decision-engine'
 import { saveDecision, updateDecisionExecution, getLastDecision, saveHourlyStat, Decision } from './storage'
-import { loadConfig, SchedulerConfig } from './config'
+import { loadConfig, SchedulerConfig, getLoadsConfig } from './config'
+import { executeLoadActions, LoadEvaluationResult, getLoadManagerState } from './load-manager'
 
 export interface SchedulerState {
   isRunning: boolean
@@ -21,6 +23,7 @@ export interface SchedulerState {
   errorCount: number
   consecutiveErrors: number
   lastError: string | null
+  lastLoadActions: string[]
 }
 
 export interface SchedulerStats {
@@ -28,6 +31,7 @@ export interface SchedulerStats {
   successfulRuns: number
   failedRuns: number
   actionCounts: Record<BatteryAction, number>
+  loadActionCounts: { sheds: number; restores: number }
   uptime: number // ms
 }
 
@@ -43,6 +47,7 @@ let state: SchedulerState = {
   errorCount: 0,
   consecutiveErrors: 0,
   lastError: null,
+  lastLoadActions: [],
 }
 
 let stats: SchedulerStats = {
@@ -55,6 +60,7 @@ let stats: SchedulerStats = {
     discharge: 0,
     idle: 0,
   },
+  loadActionCounts: { sheds: 0, restores: 0 },
   uptime: 0,
 }
 
@@ -65,7 +71,7 @@ let cachedSolar: SolarDay | null = null
 let cacheDate: string | null = null
 
 /**
- * Main scheduler tick - evaluates conditions and takes action
+ * Main scheduler tick - evaluates conditions, takes battery action, and manages loads
  */
 async function tick(): Promise<void> {
   if (state.isPaused) {
@@ -105,7 +111,7 @@ async function tick(): Promise<void> {
       throw new Error('No se pudo obtener estado de batería')
     }
     
-    console.log(`🔋 Estado actual: SOC=${batteryStatus.soc}%, Solar=${batteryStatus.solarPower}W, Grid=${batteryStatus.gridPower}W`)
+    console.log(`🔋 Estado actual: SOC=${batteryStatus.soc}%, Solar=${batteryStatus.solarPower}W, Load=${batteryStatus.loadPower}W, Grid=${batteryStatus.gridPower}W`)
     
     // Refresh price/solar cache if needed (once per day or if missing)
     if (cacheDate !== dateStr || !cachedPrices || !cachedSolar) {
@@ -125,8 +131,8 @@ async function tick(): Promise<void> {
     const currentPrice = cachedPrices.prices.find(p => p.hour === currentHour)?.price || cachedPrices.averagePrice
     const currentSolarForecast = cachedSolar.forecasts.find(f => f.hour === currentHour)?.watts || 0
     
-    // Make decision
-    const decision = makeDecision({
+    // Make full decision (battery + loads)
+    const { batteryDecision, loadActions } = await makeFullDecision({
       currentSoc: batteryStatus.soc,
       currentPrice,
       currentSolarWatts: batteryStatus.solarPower,
@@ -137,11 +143,11 @@ async function tick(): Promise<void> {
       thresholds,
     })
     
-    console.log(`\n${explainDecision(decision)}`)
+    console.log(`\n${explainDecision(batteryDecision)}`)
     
     // Check if action changed from last run
     const lastDecision = getLastDecision()
-    const actionChanged = !lastDecision || lastDecision.action !== decision.action
+    const actionChanged = !lastDecision || lastDecision.action !== batteryDecision.action
     
     // Save decision to database
     const decisionRecord: Decision = {
@@ -149,29 +155,77 @@ async function tick(): Promise<void> {
       soc: batteryStatus.soc,
       price: currentPrice,
       solar_watts: batteryStatus.solarPower,
-      action: decision.action,
-      reason: decision.reason,
+      action: batteryDecision.action,
+      reason: batteryDecision.reason,
       executed: false,
     }
     const decisionId = saveDecision(decisionRecord)
     
-    // Execute action (only if changed or force refresh every 4 ticks)
+    // Execute battery action (only if changed or force refresh every 4 ticks)
     const shouldExecute = actionChanged || (state.runCount % 4 === 0)
     
     if (shouldExecute) {
-      console.log(`\n🎯 Ejecutando acción: ${decision.action}`)
-      const success = await applyChargingAction(decision.action)
+      console.log(`\n🎯 Ejecutando acción batería: ${batteryDecision.action}`)
+      const success = await applyChargingAction(batteryDecision.action)
       
       if (success) {
         updateDecisionExecution(decisionId, true)
-        console.log('✅ Acción ejecutada correctamente')
+        console.log('✅ Acción de batería ejecutada correctamente')
       } else {
         updateDecisionExecution(decisionId, false, 'Error al aplicar acción en HA')
-        console.error('❌ Error al ejecutar acción')
+        console.error('❌ Error al ejecutar acción de batería')
       }
     } else {
-      console.log(`\n⏭️ Acción sin cambios (${decision.action}), no se ejecuta`)
+      console.log(`\n⏭️ Acción batería sin cambios (${batteryDecision.action}), no se ejecuta`)
       updateDecisionExecution(decisionId, true)
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LOAD MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const loadsConfig = getLoadsConfig()
+    state.lastLoadActions = []
+    
+    if (loadsConfig.enabled && loadActions.length > 0) {
+      console.log(`\n🔌 Gestión de cargas:`)
+      
+      for (const action of loadActions) {
+        console.log(`   ${action.action === 'shed' ? '⬇️' : '⬆️'} ${action.reason}`)
+        console.log(`      Dispositivos: ${action.devices.join(', ')}`)
+      }
+      
+      // Execute load actions
+      const { executed, failed } = await executeLoadActions(loadActions, {
+        soc: batteryStatus.soc,
+        price: currentPrice,
+        solarWatts: batteryStatus.solarPower,
+        loadWatts: batteryStatus.loadPower,
+      })
+      
+      state.lastLoadActions = executed
+      
+      // Update stats
+      for (const action of executed) {
+        if (action.startsWith('shed:')) {
+          stats.loadActionCounts.sheds++
+        } else if (action.startsWith('restore:')) {
+          stats.loadActionCounts.restores++
+        }
+      }
+      
+      if (executed.length > 0) {
+        console.log(`✅ Cargas gestionadas: ${executed.join(', ')}`)
+      }
+      if (failed.length > 0) {
+        console.log(`⚠️ Cargas fallidas: ${failed.join(', ')}`)
+      }
+    } else if (loadsConfig.enabled) {
+      // No actions needed, show current state
+      const loadState = await getLoadManagerState()
+      if (loadState.shedLoads.length > 0) {
+        console.log(`\n🔌 Cargas desconectadas: ${loadState.shedLoads.map(l => l.name).join(', ')}`)
+      }
     }
     
     // Save hourly stats (at minute 0 or first run of the hour)
@@ -191,13 +245,13 @@ async function tick(): Promise<void> {
     
     // Update state
     state.lastRun = nowStr
-    state.lastAction = decision.action
-    state.lastReason = decision.reason
+    state.lastAction = batteryDecision.action
+    state.lastReason = batteryDecision.reason
     state.consecutiveErrors = 0
     state.lastError = null
     
     stats.successfulRuns++
-    stats.actionCounts[decision.action]++
+    stats.actionCounts[batteryDecision.action]++
     
   } catch (error) {
     const errorMsg = (error as Error).message
@@ -242,6 +296,15 @@ export function start(): boolean {
   console.log(`   Intervalo: ${config.scheduler.interval_minutes} minutos`)
   console.log(`   Umbrales: SOC mín=${config.thresholds.min_soc}%, máx=${config.thresholds.max_soc}%`)
   console.log(`   Percentiles precio: bajo=P${config.thresholds.price_percentile_low}, alto=P${config.thresholds.price_percentile_high}`)
+  
+  // Load management status
+  const loadsConfig = getLoadsConfig()
+  const deviceCount = loadsConfig.devices?.length || 0
+  if (loadsConfig.enabled) {
+    console.log(`   Gestión cargas: ACTIVA (${deviceCount} dispositivos)`)
+  } else {
+    console.log(`   Gestión cargas: deshabilitada`)
+  }
   
   state.isRunning = true
   state.isPaused = false
