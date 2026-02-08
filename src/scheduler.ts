@@ -157,19 +157,17 @@ async function tick(): Promise<void> {
     // Log the simplified decision clearly
     console.log(`\n${'─'.repeat(50)}`)
     console.log(`🎯 CONTROL DECISION:`)
-    console.log(`   Grid Charging: ${controlDecision.charging === 'Grid' ? '✅ ON' : '❌ OFF'}`)
-    console.log(`   Target SOC: ${controlDecision.targetSoc}%`)
+    console.log(`   Target SOC: ${controlDecision.targetSoc}% ${controlDecision.targetSoc === 0 ? '(grid disabled)' : '(grid charging ON)'}`)
     console.log(`   Reason: ${controlDecision.reason}`)
     console.log(`${'─'.repeat(50)}`)
     
     // Check current settings from HA
     const currentSettings = await getCurrentSettings()
     const settingsChanged = !currentSettings || 
-      currentSettings.charging !== controlDecision.charging ||
       currentSettings.targetSoc !== controlDecision.targetSoc
     
     // Save decision to database (using legacy action mapping for compatibility)
-    const legacyAction = controlDecision.charging === 'Grid' ? 'charge_from_grid' : 'idle'
+    const legacyAction = controlDecision.targetSoc > 0 ? 'charge_from_grid' : 'idle'
     const decisionRecord: Decision = {
       timestamp: nowStr,
       soc: batteryStatus.soc,
