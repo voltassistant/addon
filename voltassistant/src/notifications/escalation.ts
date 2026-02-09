@@ -167,7 +167,7 @@ async function sendToChannel(
           title: urgencyPrefix + alert.title,
           message: alert.message,
           data: {
-            priority: alert.severity,
+            priority: alert.severity as any,
             tag: `escalation_${alert.id}`,
             persistent: alert.severity !== 'info',
           },

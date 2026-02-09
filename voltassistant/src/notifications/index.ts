@@ -208,7 +208,7 @@ export async function notifyCriticalAlert(
       results.push(sendHANotification({
         title: `⚠️ ${type}`,
         message,
-        data: { priority: severity, persistent: true },
+        data: { priority: severity as any, persistent: true },
       }))
     }
     

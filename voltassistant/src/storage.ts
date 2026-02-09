@@ -687,3 +687,51 @@ export function getDatabaseStats(): {
     sizeBytes: stats.size,
   }
 }
+
+/**
+ * Storage Interface
+ * Simple key-value interface for metrics and state
+ */
+export interface Storage {
+  get(key: string): Promise<unknown>
+  set(key: string, value: unknown): Promise<void>
+}
+
+// In-memory cache for simple key-value storage
+const memoryStore: Map<string, unknown> = new Map()
+
+const storage: Storage = {
+  async get(key: string): Promise<unknown> {
+    // For decision history, return from database
+    if (key === 'decisionHistory') {
+      return getRecentDecisions(1000).map(d => ({
+        timestamp: new Date(d.timestamp).getTime(),
+        action: d.action,
+        reason: d.reason,
+      }))
+    }
+    
+    // For savings stats, return from config
+    if (key === 'savingsStats') {
+      const value = getConfigValue('savingsStats')
+      return value ? JSON.parse(value) : null
+    }
+    
+    return memoryStore.get(key)
+  },
+  
+  async set(key: string, value: unknown): Promise<void> {
+    if (key === 'savingsStats') {
+      setConfigValue('savingsStats', JSON.stringify(value))
+      return
+    }
+    memoryStore.set(key, value)
+  },
+}
+
+/**
+ * Get the storage singleton
+ */
+export function getStorage(): Storage {
+  return storage
+}
