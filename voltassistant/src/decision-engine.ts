@@ -463,3 +463,32 @@ function actionToSpanish(action: BatteryAction): string {
   }
   return map[action]
 }
+
+/**
+ * Decision Engine Singleton
+ * Provides access to decision-making functions
+ */
+export interface DecisionEngine {
+  makeDecision: typeof makeDecision
+  makeSimpleDecision: typeof makeSimpleDecision
+  makeFullDecision: typeof makeFullDecision
+  quickDecision: typeof quickDecision
+  explainDecision: typeof explainDecision
+  calculatePricePercentile: typeof calculatePricePercentile
+}
+
+const decisionEngine: DecisionEngine = {
+  makeDecision,
+  makeSimpleDecision,
+  makeFullDecision,
+  quickDecision,
+  explainDecision,
+  calculatePricePercentile,
+}
+
+/**
+ * Get the decision engine singleton
+ */
+export function getDecisionEngine(): DecisionEngine {
+  return decisionEngine
+}

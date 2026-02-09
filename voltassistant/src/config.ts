@@ -411,3 +411,8 @@ export function validateConfig(config: AppConfig): { valid: boolean; errors: str
     errors,
   }
 }
+
+/**
+ * Get current configuration (alias for loadConfig for compatibility)
+ */
+export const getConfig = loadConfig

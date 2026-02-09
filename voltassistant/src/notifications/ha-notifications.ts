@@ -88,8 +88,9 @@ export async function sendHANotification(
   target: NotificationTarget = { type: 'all' }
 ): Promise<boolean> {
   const config = getConfig()
-  const haUrl = haConnection?.url || config.homeAssistant?.url
-  const haToken = haConnection?.token || config.homeAssistant?.token
+  const haConfig = config.home_assistant as any
+  const haUrl = haConnection?.url || haConfig?.url
+  const haToken = haConnection?.token || haConfig?.token
   
   if (!haUrl || !haToken) {
     console.error('Home Assistant not configured')
@@ -131,8 +132,9 @@ export async function sendHANotification(
  */
 export async function fireHAEvent(eventType: string, eventData: Record<string, any>): Promise<boolean> {
   const config = getConfig()
-  const haUrl = haConnection?.url || config.homeAssistant?.url
-  const haToken = haConnection?.token || config.homeAssistant?.token
+  const haConfig = config.home_assistant as any
+  const haUrl = haConnection?.url || haConfig?.url
+  const haToken = haConnection?.token || haConfig?.token
   
   if (!haUrl || !haToken) {
     console.error('Home Assistant not configured')
