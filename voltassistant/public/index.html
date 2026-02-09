@@ -18,6 +18,8 @@
       --accent-glow: rgba(0, 255, 136, 0.15);
       --danger: #ff4444;
       --warning: #ffaa00;
+      --blue: #00aaff;
+      --blue-glow: rgba(0, 170, 255, 0.15);
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -163,8 +165,8 @@
       50% { opacity: 0.5; }
     }
     
-    /* Features */
-    .features {
+    /* Products Section */
+    .products {
       padding: 80px 0;
       border-top: 1px solid var(--border);
     }
@@ -183,6 +185,101 @@
       color: var(--text-muted);
     }
     
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 32px;
+    }
+    
+    .product-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+    
+    .product-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 40px var(--accent-glow);
+      transform: translateY(-4px);
+    }
+    
+    .product-card.cloud:hover {
+      border-color: var(--blue);
+      box-shadow: 0 0 40px var(--blue-glow);
+    }
+    
+    .product-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    
+    .product-icon {
+      font-size: 48px;
+    }
+    
+    .product-title h3 {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+    
+    .product-title .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .badge-local {
+      background: var(--accent);
+      color: #000;
+    }
+    
+    .badge-saas {
+      background: var(--blue);
+      color: #000;
+    }
+    
+    .product-card p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 24px;
+    }
+    
+    .product-features {
+      list-style: none;
+      margin-bottom: 24px;
+    }
+    
+    .product-features li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .product-features li:last-child {
+      border-bottom: none;
+    }
+    
+    .check {
+      color: var(--accent);
+    }
+    
+    /* Features */
+    .features {
+      padding: 80px 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    
     .feature-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -190,7 +287,7 @@
     }
     
     .feature-card {
-      background: var(--surface);
+      background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 32px;
@@ -199,7 +296,6 @@
     
     .feature-card:hover {
       border-color: var(--accent);
-      box-shadow: 0 0 40px var(--accent-glow);
       transform: translateY(-4px);
     }
     
@@ -218,116 +314,123 @@
       font-size: 14px;
     }
     
-    /* Installation */
-    .installation {
+    /* API Docs */
+    .api-docs {
       padding: 80px 0;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
+    }
+    
+    .endpoint-group {
+      margin-bottom: 48px;
+    }
+    
+    .endpoint-group h3 {
+      font-size: 20px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
       border-bottom: 1px solid var(--border);
     }
     
-    .install-steps {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 32px;
-      margin-top: 48px;
-    }
-    
-    .install-step {
-      position: relative;
-      padding-left: 60px;
-    }
-    
-    .step-number {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 40px;
-      height: 40px;
-      background: var(--accent);
-      color: #000;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 18px;
-    }
-    
-    .install-step h3 {
-      font-size: 18px;
-      margin-bottom: 8px;
-    }
-    
-    .install-step p {
-      color: var(--text-muted);
-      font-size: 14px;
-      margin-bottom: 12px;
-    }
-    
-    .code-block {
-      background: var(--bg);
+    .endpoint {
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 12px 16px;
-      font-family: 'SF Mono', Monaco, monospace;
-      font-size: 13px;
-      overflow-x: auto;
-      color: var(--accent);
+      margin-bottom: 12px;
+      overflow: hidden;
     }
     
-    .code-block .comment { color: var(--text-muted); }
+    .endpoint-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      cursor: pointer;
+    }
     
-      color: var(--text-muted);
+    .method {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: monospace;
+    }
+    
+    .method-get { background: #00aa55; color: #fff; }
+    .method-post { background: #0088cc; color: #fff; }
+    .method-delete { background: #cc4444; color: #fff; }
+    
+    .endpoint-path {
+      font-family: monospace;
       font-size: 14px;
+      color: var(--text);
     }
     
-    /* Live Status */
-    .live-status {
+    .endpoint-desc {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-left: auto;
+    }
+    
+    /* Architecture */
+    .architecture {
       padding: 80px 0;
       background: var(--surface);
       border-top: 1px solid var(--border);
     }
     
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 24px;
-      margin-top: 32px;
-    }
-    
-    .status-card {
+    .arch-diagram {
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
+      border-radius: 16px;
+      padding: 48px;
       text-align: center;
     }
     
-    .status-card .label {
+    .arch-row {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    
+    .arch-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 32px;
+      min-width: 180px;
+    }
+    
+    .arch-box.highlight {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    
+    .arch-box.cloud-highlight {
+      border-color: var(--blue);
+      box-shadow: 0 0 20px var(--blue-glow);
+    }
+    
+    .arch-box h4 {
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    
+    .arch-box p {
       font-size: 12px;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
     }
     
-    .status-card .value {
-      font-size: 36px;
-      font-weight: 700;
-      color: var(--accent);
-    }
-    
-    .status-card .unit {
-      font-size: 16px;
+    .arch-arrow {
+      font-size: 24px;
       color: var(--text-muted);
     }
     
     /* Footer */
     footer {
       padding: 48px 0;
-      text-align: center;
       border-top: 1px solid var(--border);
+      text-align: center;
     }
     
     footer p {
@@ -340,355 +443,523 @@
       text-decoration: none;
     }
     
-    /* Responsive */
+    /* Code blocks */
+    .code-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    
+    .code-block code {
+      color: var(--accent);
+    }
+    
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .tab {
+      padding: 12px 24px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.2s;
+    }
+    
+    .tab:hover {
+      color: var(--text);
+    }
+    
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
     @media (max-width: 768px) {
       .hero h1 { font-size: 32px; }
       .hero p { font-size: 16px; }
-      .install-step { padding-left: 50px; }
-    }
-    
-    /* Accordion */
-    .accordion { margin-top: 32px; }
-    
-    .accordion-item {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      margin-bottom: 12px;
-      overflow: hidden;
-    }
-    
-    .accordion-header {
-      padding: 20px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 600;
-    }
-    
-    .accordion-header:hover { background: var(--surface-2); }
-    
-    .accordion-icon {
-      transition: transform 0.3s;
-    }
-    
-    .accordion-item.open .accordion-icon {
-      transform: rotate(180deg);
-    }
-    
-    .accordion-content {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s;
-    }
-    
-    .accordion-item.open .accordion-content {
-      max-height: 500px;
-    }
-    
-    .accordion-body {
-      padding: 0 20px 20px;
-      color: var(--text-muted);
-      font-size: 14px;
-    }
-    
-    .accordion-body code {
-      background: var(--bg);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 13px;
-      color: var(--accent);
+      .product-grid { grid-template-columns: 1fr; }
+      .arch-row { flex-direction: column; align-items: center; }
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="container header-content">
-      <a href="/" class="logo">
-        <span class="logo-icon">⚡</span>
-        <span class="logo-text">VoltAssistant</span>
-      </a>
-      <nav class="nav">
-        <a href="#features">Features</a>
-        <a href="#install">Installation</a>
-        <a href="#status">Status</a>
-      </nav>
+    <div class="container">
+      <div class="header-content">
+        <a href="/" class="logo">
+          <span class="logo-icon">⚡</span>
+          <span class="logo-text">VoltAssistant</span>
+        </a>
+        <nav class="nav">
+          <a href="#products">Products</a>
+          <a href="#features">Features</a>
+          <a href="#api">API</a>
+          <a href="#architecture">Architecture</a>
+          <a href="https://github.com/voltassistant" target="_blank">GitHub</a>
+        </nav>
+      </div>
     </div>
   </header>
-  
+
   <section class="hero">
     <div class="container">
       <h1>Smart Battery Optimization</h1>
-      <p>Maximize your solar investment with intelligent charging, PVPC price optimization, and automated load management for Home Assistant.</p>
+      <p>Optimize your solar battery charging with PVPC prices, solar forecasts, and intelligent automation for Home Assistant.</p>
       <div class="hero-buttons">
-        <a href="#install" class="btn btn-primary">🚀 Get Started</a>
-        <a href="/dashboard" class="btn btn-secondary">📊 View Dashboard</a>
+        <a href="/dashboard" class="btn btn-primary">📊 Open Dashboard</a>
+        <a href="#api" class="btn btn-secondary">📖 API Docs</a>
       </div>
       <div class="status-badge">
         <span class="status-dot"></span>
-        <span id="server-status">Checking connection...</span>
+        <span id="status-text">Checking status...</span>
       </div>
     </div>
   </section>
-  
+
+  <section id="products" class="products">
+    <div class="container">
+      <div class="section-title">
+        <h2>🧩 Products</h2>
+        <p>Two components that work together or standalone</p>
+      </div>
+      
+      <div class="product-grid">
+        <div class="product-card">
+          <div class="product-header">
+            <span class="product-icon">🔋</span>
+            <div class="product-title">
+              <h3>VoltAssistant</h3>
+              <span class="badge badge-local">Local / Standalone</span>
+            </div>
+          </div>
+          <p>Local energy optimizer that connects to your Home Assistant and controls your inverter based on PVPC prices and solar forecast.</p>
+          <ul class="product-features">
+            <li><span class="check">✓</span> PVPC price analysis (ESIOS/REE)</li>
+            <li><span class="check">✓</span> Solar forecast integration</li>
+            <li><span class="check">✓</span> Home Assistant WebSocket API</li>
+            <li><span class="check">✓</span> Deye/Solarman inverter support</li>
+            <li><span class="check">✓</span> Automatic battery scheduling</li>
+            <li><span class="check">✓</span> Web dashboard & REST API</li>
+            <li><span class="check">✓</span> Decision history & analytics</li>
+          </ul>
+          <a href="/dashboard" class="btn btn-primary">Open Dashboard →</a>
+        </div>
+        
+        <div class="product-card cloud">
+          <div class="product-header">
+            <span class="product-icon">☁️</span>
+            <div class="product-title">
+              <h3>VoltAssistant Cloud</h3>
+              <span class="badge badge-saas">Multi-tenant SaaS</span>
+            </div>
+          </div>
+          <p>Cloud platform for managing multiple VoltAssistant installations. Aggregate data, compare performance, and access from anywhere.</p>
+          <ul class="product-features">
+            <li><span class="check">✓</span> Multi-installation management</li>
+            <li><span class="check">✓</span> User authentication (JWT)</li>
+            <li><span class="check">✓</span> API key management</li>
+            <li><span class="check">✓</span> Real-time WebSocket sync</li>
+            <li><span class="check">✓</span> Encrypted HA token storage</li>
+            <li><span class="check">✓</span> Usage analytics & history</li>
+            <li><span class="check">✓</span> Free & Pro plans</li>
+          </ul>
+          <a href="http://localhost:3000" class="btn btn-secondary">Cloud Dashboard →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="features" class="features">
     <div class="container">
       <div class="section-title">
-        <h2>⚡ Powerful Features</h2>
-        <p>Everything you need to optimize your home energy system</p>
+        <h2>✨ Features</h2>
+        <p>Everything you need to optimize your energy usage</p>
       </div>
+      
       <div class="feature-grid">
         <div class="feature-card">
-          <div class="feature-icon">💶</div>
-          <h3>PVPC Price Optimization</h3>
-          <p>Automatically fetches Spanish electricity prices and plans charging during the cheapest hours to minimize costs.</p>
+          <div class="feature-icon">📊</div>
+          <h3>PVPC Analysis</h3>
+          <p>Real-time electricity prices from ESIOS/REE. Identify cheap hours for charging and expensive hours for discharging.</p>
         </div>
+        
         <div class="feature-card">
           <div class="feature-icon">☀️</div>
-          <h3>Solar Forecast Integration</h3>
-          <p>Uses weather data to predict solar generation and optimize when to charge from grid vs. wait for sun.</p>
+          <h3>Solar Forecast</h3>
+          <p>Integration with forecast.solar API. Know how much solar energy you'll produce tomorrow to plan accordingly.</p>
         </div>
+        
         <div class="feature-card">
           <div class="feature-icon">🔋</div>
-          <h3>Smart Battery Control</h3>
-          <p>Controls your Deye inverter to charge, discharge, or hold based on real-time conditions and forecasts.</p>
+          <h3>Battery Control</h3>
+          <p>Automatic SOC management via Home Assistant. Set charging thresholds based on price and solar conditions.</p>
         </div>
+        
         <div class="feature-card">
-          <div class="feature-icon">⚖️</div>
-          <h3>Load Management</h3>
-          <p>Prioritizes loads to stay within contracted power. Essential loads stay on, accessories are shed first.</p>
+          <div class="feature-icon">📈</div>
+          <h3>Decision History</h3>
+          <p>Track all decisions with full context. See why each action was taken and measure savings over time.</p>
         </div>
-        <div class="feature-card">
-          <div class="feature-icon">📊</div>
-          <h3>Real-time Dashboard</h3>
-          <p>Visual monitoring of battery state, power flows, and optimization decisions with historical charts.</p>
-        </div>
+        
         <div class="feature-card">
           <div class="feature-icon">🔔</div>
           <h3>Smart Alerts</h3>
-          <p>Configurable alerts for low battery, high prices, temperature issues, and optimization opportunities.</p>
+          <p>Notifications via WhatsApp, webhooks, or Home Assistant. Daily reports and critical battery alerts.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>REST API</h3>
+          <p>Full API access for integrations. Build custom automations or connect to other systems.</p>
         </div>
       </div>
     </div>
   </section>
-  
-  <section id="install" class="installation">
+
+  <section id="api" class="api-docs">
     <div class="container">
       <div class="section-title">
-        <h2>🛠️ Installation</h2>
-        <p>Get VoltAssistant running in your Home Assistant in minutes</p>
+        <h2>📖 API Reference</h2>
+        <p>Complete REST API for both local and cloud deployments</p>
       </div>
       
-      <div class="install-steps">
-        <div class="install-step">
-          <div class="step-number">1</div>
-          <h3>Add the Repository</h3>
-          <p>Go to Settings → Add-ons → Add-on Store → ⋮ → Repositories and add:</p>
-          <div class="code-block">https://github.com/arturonaredo/ha-addons</div>
-        </div>
-        
-        <div class="install-step">
-          <div class="step-number">2</div>
-          <h3>Install the Add-on</h3>
-          <p>Find "VoltAssistant" in the add-on store and click Install. Wait for the installation to complete.</p>
-        </div>
-        
-        <div class="install-step">
-          <div class="step-number">3</div>
-          <h3>Configure Sensors</h3>
-          <p>Open the add-on configuration and set your inverter sensor entity IDs. The web UI provides a visual configuration panel.</p>
-        </div>
-        
-        <div class="install-step">
-          <div class="step-number">4</div>
-          <h3>Start & Enjoy</h3>
-          <p>Start the add-on and open the Web UI. VoltAssistant will begin optimizing your battery automatically.</p>
-        </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="local">VoltAssistant (Local)</button>
+        <button class="tab" data-tab="cloud">VoltAssistant Cloud</button>
       </div>
       
-      <div class="accordion">
-        <div class="accordion-item">
-          <div class="accordion-header" onclick="toggleAccordion(this)">
-            <span>📋 Required Home Assistant Sensors</span>
-            <span class="accordion-icon">▼</span>
+      <div id="local" class="tab-content active">
+        <div class="endpoint-group">
+          <h3>Health & Status</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/health</span>
+              <span class="endpoint-desc">Health check endpoint</span>
+            </div>
           </div>
-          <div class="accordion-content">
-            <div class="accordion-body">
-              <p>VoltAssistant needs access to these sensors from your inverter integration:</p>
-              <ul style="margin-top:12px;margin-left:20px;">
-                <li><code>sensor.battery_soc</code> - Battery state of charge (%)</li>
-                <li><code>sensor.battery_power</code> - Battery power flow (W)</li>
-                <li><code>sensor.grid_power</code> - Grid import/export (W)</li>
-                <li><code>sensor.load_power</code> - House consumption (W)</li>
-                <li><code>sensor.pv_power</code> - Solar generation (W)</li>
-                <li><code>sensor.pvpc_price</code> - Electricity price (€/kWh)</li>
-              </ul>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/status</span>
+              <span class="endpoint-desc">Full system status with HA connection info</span>
             </div>
           </div>
         </div>
         
-        <div class="accordion-item">
-          <div class="accordion-header" onclick="toggleAccordion(this)">
-            <span>🔌 Supported Inverters</span>
-            <span class="accordion-icon">▼</span>
+        <div class="endpoint-group">
+          <h3>Scheduler</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/scheduler/status</span>
+              <span class="endpoint-desc">Current scheduler state and next run</span>
+            </div>
           </div>
-          <div class="accordion-content">
-            <div class="accordion-body">
-              <p>Currently optimized for:</p>
-              <ul style="margin-top:12px;margin-left:20px;">
-                <li>Deye SUN-xK-SG04LP3-EU series</li>
-                <li>Any inverter with Home Assistant integration exposing required sensors</li>
-              </ul>
-              <p style="margin-top:12px;">The system uses HA services to control charging modes, so any inverter with proper HA integration should work.</p>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api/scheduler/start</span>
+              <span class="endpoint-desc">Start the scheduler</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api/scheduler/stop</span>
+              <span class="endpoint-desc">Stop the scheduler</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api/scheduler/tick</span>
+              <span class="endpoint-desc">Force immediate scheduler tick</span>
             </div>
           </div>
         </div>
         
-        <div class="accordion-item">
-          <div class="accordion-header" onclick="toggleAccordion(this)">
-            <span>🇪🇸 Spanish 2.0TD Tariff Support</span>
-            <span class="accordion-icon">▼</span>
+        <div class="endpoint-group">
+          <h3>Decisions</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/decisions</span>
+              <span class="endpoint-desc">Decision history with filters</span>
+            </div>
           </div>
-          <div class="accordion-content">
-            <div class="accordion-body">
-              <p>Full support for Spanish 2.0TD electricity tariff:</p>
-              <ul style="margin-top:12px;margin-left:20px;">
-                <li><strong>Valle (00-08h):</strong> Cheapest hours, optimal for charging</li>
-                <li><strong>Llano (08-10h, 14-18h, 22-00h):</strong> Medium prices</li>
-                <li><strong>Punta (10-14h, 18-22h):</strong> Peak prices, avoid charging</li>
-              </ul>
-              <p style="margin-top:12px;">Configure different contracted power per period to manage load shedding correctly.</p>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>Configuration</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/config</span>
+              <span class="endpoint-desc">Get current configuration</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api/config</span>
+              <span class="endpoint-desc">Update configuration</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>Home Assistant</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/ha/verify</span>
+              <span class="endpoint-desc">Verify HA entity configuration</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/ha/states</span>
+              <span class="endpoint-desc">Get current HA entity states</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>Cloud Sync</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api/cloud/status</span>
+              <span class="endpoint-desc">Cloud connection status</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api/cloud/link</span>
+              <span class="endpoint-desc">Link to cloud with API key</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="cloud" class="tab-content">
+        <div class="endpoint-group">
+          <h3>Authentication</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/auth/register</span>
+              <span class="endpoint-desc">Create new account</span>
+            </div>
+          </div>
+          <div class="code-block">
+            <code>curl -X POST http://cloud:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"securepass"}'</code>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/auth/login</span>
+              <span class="endpoint-desc">Login and get JWT tokens</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/auth/refresh</span>
+              <span class="endpoint-desc">Refresh access token</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/auth/me</span>
+              <span class="endpoint-desc">Get current user info</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>Installations</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/installations</span>
+              <span class="endpoint-desc">List all your installations</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/installations</span>
+              <span class="endpoint-desc">Create new installation</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/installations/:id</span>
+              <span class="endpoint-desc">Get installation details</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/installations/:id/decisions</span>
+              <span class="endpoint-desc">Get decision history</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>API Keys</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">GET</span>
+              <span class="endpoint-path">/api-keys</span>
+              <span class="endpoint-desc">List your API keys</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-post">POST</span>
+              <span class="endpoint-path">/api-keys</span>
+              <span class="endpoint-desc">Create new API key for addon linking</span>
+            </div>
+          </div>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-delete">DELETE</span>
+              <span class="endpoint-path">/api-keys/:id</span>
+              <span class="endpoint-desc">Revoke an API key</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="endpoint-group">
+          <h3>WebSocket</h3>
+          <div class="endpoint">
+            <div class="endpoint-header">
+              <span class="method method-get">WS</span>
+              <span class="endpoint-path">/ws?apiKey=...</span>
+              <span class="endpoint-desc">Real-time sync for addons</span>
             </div>
           </div>
         </div>
       </div>
     </div>
   </section>
-  
-  
-  <section id="status" class="live-status">
+
+  <section id="architecture" class="architecture">
     <div class="container">
       <div class="section-title">
-        <h2>📊 Live Status</h2>
-        <p>Real-time data from VoltAssistant API</p>
+        <h2>🏗️ Architecture</h2>
+        <p>How the components work together</p>
       </div>
       
-      <div class="status-grid">
-        <div class="status-card">
-          <div class="label">Battery</div>
-          <div class="value" id="live-soc">--</div>
-          <div class="unit">%</div>
+      <div class="arch-diagram">
+        <div class="arch-row">
+          <div class="arch-box">
+            <h4>☀️ ESIOS/REE</h4>
+            <p>PVPC prices</p>
+          </div>
+          <div class="arch-box">
+            <h4>🌤️ forecast.solar</h4>
+            <p>Solar prediction</p>
+          </div>
         </div>
-        <div class="status-card">
-          <div class="label">Solar</div>
-          <div class="value" id="live-pv">--</div>
-          <div class="unit">W</div>
+        
+        <div class="arch-row">
+          <span class="arch-arrow">↓</span>
         </div>
-        <div class="status-card">
-          <div class="label">Grid</div>
-          <div class="value" id="live-grid">--</div>
-          <div class="unit">W</div>
+        
+        <div class="arch-row">
+          <div class="arch-box highlight">
+            <h4>⚡ VoltAssistant</h4>
+            <p>Local optimizer (port 3001)</p>
+          </div>
+          <span class="arch-arrow">↔</span>
+          <div class="arch-box cloud-highlight">
+            <h4>☁️ Cloud</h4>
+            <p>Multi-tenant SaaS (port 3000)</p>
+          </div>
         </div>
-        <div class="status-card">
-          <div class="label">Load</div>
-          <div class="value" id="live-load">--</div>
-          <div class="unit">W</div>
+        
+        <div class="arch-row">
+          <span class="arch-arrow">↓</span>
         </div>
-        <div class="status-card">
-          <div class="label">Price</div>
-          <div class="value" id="live-price">--</div>
-          <div class="unit">€/kWh</div>
-        </div>
-        <div class="status-card">
-          <div class="label">Uptime</div>
-          <div class="value" id="live-uptime">--</div>
-          <div class="unit">hours</div>
+        
+        <div class="arch-row">
+          <div class="arch-box">
+            <h4>🏠 Home Assistant</h4>
+            <p>WebSocket API</p>
+          </div>
+          <span class="arch-arrow">↔</span>
+          <div class="arch-box">
+            <h4>🔋 Inverter</h4>
+            <p>Deye / Solarman</p>
+          </div>
         </div>
       </div>
     </div>
   </section>
-  
+
   <footer>
     <div class="container">
-      <p>VoltAssistant v1.0.0 · Made with ⚡ for solar enthusiasts</p>
-      <p style="margin-top:8px;">
-        <a href="https://github.com/arturonaredo/ha-addons">GitHub</a> · 
-        <a href="/health">API Health</a> · 
-        <a href="/metrics">Prometheus Metrics</a>
-      </p>
+      <p>VoltAssistant © 2024 — <a href="https://github.com/voltassistant" target="_blank">GitHub</a> — <a href="https://voltassistant.io" target="_blank">voltassistant.io</a></p>
     </div>
   </footer>
-  
+
   <script>
-    function toggleAccordion(header) {
-      const item = header.parentElement;
-      item.classList.toggle('open');
-    }
-    
+    // Check status
     async function checkStatus() {
       try {
         const res = await fetch('/health');
-        if (res.ok) {
-          document.getElementById('server-status').textContent = 'API Online · v1.0.0';
-          document.querySelector('.status-dot').style.background = 'var(--accent)';
-        }
-      } catch (e) {
-        document.getElementById('server-status').textContent = 'API Offline';
-        document.querySelector('.status-dot').style.background = 'var(--danger)';
-      }
-    }
-    
-    async function updateLiveStatus() {
-      try {
-        const res = await fetch('/status');
-        if (!res.ok) return;
         const data = await res.json();
-        
-        if (data.battery) {
-          document.getElementById('live-soc').textContent = data.battery.soc?.toFixed(0) || '--';
-        }
-        if (data.solar) {
-          document.getElementById('live-pv').textContent = data.solar.power?.toFixed(0) || '--';
-        }
-        if (data.grid) {
-          document.getElementById('live-grid').textContent = Math.abs(data.grid.power || 0).toFixed(0);
-        }
-        if (data.load) {
-          document.getElementById('live-load').textContent = data.load.power?.toFixed(0) || '--';
-        }
-      } catch (e) {
-        console.log('Status fetch failed');
+        document.getElementById('status-text').textContent = 
+          data.status === 'ok' ? `Running v${data.version || '2.1.0'}` : 'Offline';
+      } catch {
+        document.getElementById('status-text').textContent = 'Checking...';
       }
-      
-      try {
-        const priceRes = await fetch('/prices');
-        if (priceRes.ok) {
-          const priceData = await priceRes.json();
-          const hour = new Date().getHours();
-          const currentPrice = priceData.prices?.find(p => p.hour === hour);
-          if (currentPrice) {
-            document.getElementById('live-price').textContent = currentPrice.price.toFixed(3);
-          }
-        }
-      } catch (e) {}
-      
-      try {
-        const metricsRes = await fetch('/metrics');
-        if (metricsRes.ok) {
-          const text = await metricsRes.text();
-          const match = text.match(/nodejs_process_uptime_seconds (\d+)/);
-          if (match) {
-            const hours = Math.floor(parseInt(match[1]) / 3600);
-            document.getElementById('live-uptime').textContent = hours;
-          }
-        }
-      } catch (e) {}
     }
-    
     checkStatus();
-    updateLiveStatus();
-    setInterval(updateLiveStatus, 10000);
+    
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
   </script>
 </body>
 </html>
