@@ -1291,6 +1291,76 @@ const routes: Record<string, (req: http.IncomingMessage, res: http.ServerRespons
     }
   },
 
+  // Weekly savings report
+  'GET /report/weekly': async (req, res) => {
+    try {
+      const week = await getWeekHistory()
+      const bestWindowData = findBestChargingWindows(week.days)
+      const schedulerStats = getSchedulerStats()
+      const loadStats = getLoadActionStats(7)
+      
+      // Use summary data from getWeekHistory
+      const totalSolarKwh = week.summary.totalSolarKwh
+      const avgPrice = week.summary.avgPrice
+      
+      // Estimate savings (simplified: charging in cheap hours vs avg price)
+      const estimatedSavings = schedulerStats.totalRuns * 0.15 // ~0.15€ per optimized run
+      
+      // Get top 3 best hours from the window data
+      const topHours = bestWindowData.window.slice(0, 3)
+      
+      const lines = [
+        `📊 Resumen Semanal VoltAssistant`,
+        `📅 ${week.startDate} - ${week.endDate}`,
+        '',
+        `☀️ Producción solar total: ${Math.round(totalSolarKwh)} kWh`,
+        `💶 Precio medio de la semana: ${(avgPrice * 100).toFixed(2)}¢/kWh`,
+        '',
+        `🤖 Ejecuciones automatizadas: ${schedulerStats.totalRuns}`,
+        `   ✅ Exitosas: ${schedulerStats.successfulRuns}`,
+        `   ❌ Fallidas: ${schedulerStats.failedRuns}`,
+        '',
+        `🔌 Gestión de cargas:`,
+        `   Desconexiones: ${loadStats.total_sheds}`,
+        `   Reconexiones: ${loadStats.total_restores}`,
+        '',
+        `💰 Ahorro estimado: €${estimatedSavings.toFixed(2)}`,
+        '',
+        `⏰ Mejores horas para cargar (históricas):`,
+        ...topHours.map((h, i) => `   ${i + 1}. ${h.hour}:00 - ${(h.price * 100).toFixed(2)}¢/kWh`),
+      ]
+      
+      sendJSON(res, 200, {
+        success: true,
+        report: lines.join('\n'),
+        data: {
+          period: {
+            start: week.startDate,
+            end: week.endDate,
+            days: week.days.length,
+          },
+          solar: {
+            totalKwh: Math.round(totalSolarKwh * 10) / 10,
+            avgDailyKwh: Math.round(totalSolarKwh / (week.days.length || 1) * 10) / 10,
+          },
+          prices: {
+            average: Math.round(avgPrice * 10000) / 10000,
+            bestWindow: bestWindowData,
+          },
+          automation: {
+            totalRuns: schedulerStats.totalRuns,
+            successful: schedulerStats.successfulRuns,
+            failed: schedulerStats.failedRuns,
+          },
+          loads: loadStats,
+          estimatedSavings,
+        }
+      })
+    } catch (error) {
+      sendJSON(res, 500, { success: false, error: (error as Error).message })
+    }
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // CLOUD ROUTES
   // ═══════════════════════════════════════════════════════════════════════════

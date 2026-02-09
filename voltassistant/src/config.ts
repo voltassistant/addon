@@ -264,9 +264,20 @@ export function getThresholdsConfig(): ThresholdsConfig {
 
 /**
  * Get loads config
+ * Always returns a valid LoadsConfig with devices as an array
  */
 export function getLoadsConfig(): LoadsConfig {
   const config = loadConfig()
+  
+  // Defensive check: ensure devices is always an array
+  if (!config.loads) {
+    return DEFAULT_CONFIG.loads
+  }
+  
+  if (!Array.isArray(config.loads.devices)) {
+    config.loads.devices = []
+  }
+  
   return config.loads
 }
 
@@ -291,15 +302,38 @@ export function reloadConfig(): AppConfig {
 
 /**
  * Deep merge two objects
+ * Arrays are replaced entirely (not merged), objects are merged recursively
  */
 function deepMerge(target: any, source: any): any {
   const result = { ...target }
   
   for (const key of Object.keys(source)) {
-    if (source[key] instanceof Object && key in target && target[key] instanceof Object) {
-      result[key] = deepMerge(target[key], source[key])
-    } else if (source[key] !== undefined) {
-      result[key] = source[key]
+    const sourceValue = source[key]
+    const targetValue = target[key]
+    
+    // Skip undefined values
+    if (sourceValue === undefined) {
+      continue
+    }
+    
+    // Arrays are replaced entirely, not merged
+    if (Array.isArray(sourceValue)) {
+      result[key] = [...sourceValue]
+    }
+    // Objects are merged recursively (but not arrays or null)
+    else if (
+      sourceValue !== null &&
+      typeof sourceValue === 'object' &&
+      !Array.isArray(sourceValue) &&
+      targetValue !== null &&
+      typeof targetValue === 'object' &&
+      !Array.isArray(targetValue)
+    ) {
+      result[key] = deepMerge(targetValue, sourceValue)
+    }
+    // Primitives and null replace directly
+    else {
+      result[key] = sourceValue
     }
   }
   
