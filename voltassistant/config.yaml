@@ -1,0 +1,34 @@
+name: "VoltAssistant"
+description: "Smart battery optimization with PVPC prices and solar forecast. Requires VoltAssistant Cloud API key."
+version: "2.1.0"
+slug: "voltassistant"
+url: "https://github.com/voltassistant/addon"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 3001
+panel_icon: "mdi:flash"
+panel_title: "VoltAssistant"
+map:
+  - config:rw
+
+options:
+  cloud_api_key: ""
+  cloud_url: "https://cloud.voltassistant.io"
+  ha_url: "http://supervisor/core"
+  scheduler_interval_minutes: 15
+  low_price_percentile: 20
+  high_price_percentile: 80
+
+schema:
+  cloud_api_key: str
+  cloud_url: url
+  ha_url: url
+  scheduler_interval_minutes: int(5,60)
+  low_price_percentile: int(0,50)
+  high_price_percentile: int(50,100)
